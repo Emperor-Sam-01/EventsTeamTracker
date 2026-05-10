@@ -98,7 +98,9 @@ export default function IndividualDashboard() {
           sub={`${TIER_LABEL[gp.tier]} · Target: ${formatCurrency(gpTarget)}`}
           color={TIER_COLORS[gp.tier]}
         />
-        <StatCard label="Net Profit (You)" value={formatCurrency(gp.np)} sub="GP minus salary & costs" color={gp.np >= 0 ? 'text-green-600' : 'text-red-600'} />
+        {['bdm', 'exec_pa'].includes(user.role) && (
+          <StatCard label="Net Profit (You)" value={formatCurrency(gp.np)} sub="GP minus salary & costs" color={gp.np >= 0 ? 'text-green-600' : 'text-red-600'} />
+        )}
         <StatCard label="Current Clients" value={clients.current} sub={`${clients.pipeline} in pipeline`} />
         <StatCard label="Prospects" value={clients.prospect} sub="In outreach" />
       </div>

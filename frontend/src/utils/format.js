@@ -5,23 +5,25 @@ export const formatPct = (val, total) =>
   total ? `${Math.round((val / total) * 100)}%` : '0%';
 
 export const ROLE_LABELS = {
-  bdm:  'BD Manager / Team Lead',
-  bde:  'BD Executive',
-  sbde: 'Senior BD Executive',
-  pe:   'Project Executive',
-  spe:  'Senior Project Executive',
-  bda:  'BD Assistant',
-  pa:   'Project Assistant',
+  bdm:     'BD Manager / Team Lead',
+  exec_pa: 'Personal Assistant',
+  bde:     'BD Executive',
+  sbde:    'Senior BD Executive',
+  pe:      'Project Executive',
+  spe:     'Senior Project Executive',
+  bda:     'BD Assistant',
+  pa:      'Project Assistant',
 };
 
 export const ROLE_COLORS = {
-  bdm:  'bg-purple-100 text-purple-800',
-  bde:  'bg-blue-100 text-blue-800',
-  sbde: 'bg-blue-200 text-blue-900',
-  pe:   'bg-teal-100 text-teal-800',
-  spe:  'bg-teal-200 text-teal-900',
-  bda:  'bg-amber-100 text-amber-800',
-  pa:   'bg-orange-100 text-orange-800',
+  bdm:     'bg-purple-100 text-purple-800',
+  exec_pa: 'bg-gray-100 text-gray-700',
+  bde:     'bg-blue-100 text-blue-800',
+  sbde:    'bg-blue-200 text-blue-900',
+  pe:      'bg-teal-100 text-teal-800',
+  spe:     'bg-teal-200 text-teal-900',
+  bda:     'bg-amber-100 text-amber-800',
+  pa:      'bg-orange-100 text-orange-800',
 };
 
 export const STATUS_COLORS = {

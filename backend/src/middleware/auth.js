@@ -15,7 +15,7 @@ function authenticate(req, res, next) {
 }
 
 function requireBDM(req, res, next) {
-  if (req.user.role !== 'bdm') {
+  if (!['bdm', 'exec_pa'].includes(req.user.role)) {
     return res.status(403).json({ error: 'Team lead access required' });
   }
   next();

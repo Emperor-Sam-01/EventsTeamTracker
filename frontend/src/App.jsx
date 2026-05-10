@@ -18,7 +18,7 @@ function PrivateRoute({ children }) {
 
 function BDMRoute({ children }) {
   const { user } = useAuth();
-  return user?.role === 'bdm' ? children : <Navigate to="/" replace />;
+  return ['bdm', 'exec_pa'].includes(user?.role) ? children : <Navigate to="/" replace />;
 }
 
 export default function App() {

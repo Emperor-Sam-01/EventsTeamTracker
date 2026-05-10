@@ -26,9 +26,9 @@ export default function Sidebar({ open, onClose }) {
         ${open ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="flex items-center gap-3 px-5 py-5 border-b border-brand-800">
-          <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center text-sm font-bold">E</div>
+          <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center text-sm font-black text-white">E</div>
           <div>
-            <div className="text-sm font-semibold leading-tight">Elitez Events</div>
+            <div className="text-sm font-black tracking-widest leading-tight text-white">ELITEZ EVENTS</div>
             <div className="text-xs text-brand-300">Team Tracker</div>
           </div>
         </div>
@@ -50,7 +50,7 @@ export default function Sidebar({ open, onClose }) {
             </NavLink>
           ))}
 
-          {user?.role === 'bdm' && (
+          {['bdm', 'exec_pa'].includes(user?.role) && (
             <>
               <div className="pt-4 pb-1 px-3 text-xs font-semibold text-brand-400 uppercase tracking-wider">Team Lead</div>
               {bdmItems.map(item => (

@@ -25,11 +25,11 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-900 to-brand-700 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-8">
+    <div className="min-h-screen bg-brand-900 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8 border-t-4 border-brand-500">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-brand-600 flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4">E</div>
-          <h1 className="text-xl font-bold text-gray-900">Elitez Events</h1>
+          <div className="w-14 h-14 rounded-2xl bg-brand-900 flex items-center justify-center text-brand-500 text-2xl font-black mx-auto mb-4 border-2 border-brand-500">E</div>
+          <h1 className="text-xl font-black text-gray-900 tracking-wide">ELITEZ EVENTS</h1>
           <p className="text-sm text-gray-500 mt-1">Team Performance Dashboard</p>
         </div>
 

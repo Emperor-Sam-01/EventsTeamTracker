@@ -131,7 +131,7 @@ router.get('/team', authenticate, requireBDM, async (req, res) => {
   try {
     const { rows: users } = await pool.query(
       `SELECT id, name, role, join_date, salary, cpf_type, cpf_rate, permit_cost
-       FROM users WHERE is_active = TRUE ORDER BY name`
+       FROM users WHERE is_active = TRUE AND role != 'exec_pa' ORDER BY name`
     );
 
     const { rows: projects } = await pool.query(
@@ -252,7 +252,7 @@ router.get('/benchmarks', authenticate, async (req, res) => {
         COALESCE(SUM(p.gp) FILTER (WHERE p.period_month = $1 AND p.period_year = $2), 0) AS monthly_gp
        FROM users u
        LEFT JOIN projects p ON p.assigned_to = u.id AND p.status IN ('confirmed','completed')
-       WHERE u.is_active = TRUE AND u.role NOT IN ('bdm')
+       WHERE u.is_active = TRUE AND u.role NOT IN ('bdm', 'exec_pa')
        GROUP BY u.id, u.role`,
       [m, y]
     );
