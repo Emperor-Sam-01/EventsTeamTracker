@@ -51,7 +51,7 @@ router.get('/individual/:userId', authenticate, async (req, res) => {
     const np = calculateNP(gpForNP, parseFloat(user.salary), user.cpf_type, parseFloat(user.cpf_rate), parseFloat(user.permit_cost), user.role);
 
     // GP tier
-    const gpForTier = user.role === 'pe' ? quarterlyGP : monthlyGP;
+    const gpForTier = (user.role === 'pe' || user.role === 'spe') ? quarterlyGP : monthlyGP;
     const tier = getGPTier(user.role, gpForTier);
 
     // Sales effort history (last 12 weeks)
@@ -163,7 +163,7 @@ router.get('/team', authenticate, requireBDM, async (req, res) => {
         .filter(p => quarterMonths.includes(p.period_month))
         .reduce((sum, p) => sum + parseFloat(p.gp || 0), 0);
 
-      const gpForTier = user.role === 'pe' ? quarterlyGP : monthlyGP;
+      const gpForTier = (user.role === 'pe' || user.role === 'spe') ? quarterlyGP : monthlyGP;
       const tier = getGPTier(user.role, gpForTier);
       const np = calculateNP(monthlyGP, parseFloat(user.salary), user.cpf_type, parseFloat(user.cpf_rate), parseFloat(user.permit_cost), user.role);
 
@@ -252,7 +252,7 @@ router.get('/benchmarks', authenticate, async (req, res) => {
         COALESCE(SUM(p.gp) FILTER (WHERE p.period_month = $1 AND p.period_year = $2), 0) AS monthly_gp
        FROM users u
        LEFT JOIN projects p ON p.assigned_to = u.id AND p.status IN ('confirmed','completed')
-       WHERE u.is_active = TRUE AND u.role != 'bdm'
+       WHERE u.is_active = TRUE AND u.role NOT IN ('bdm')
        GROUP BY u.id, u.role`,
       [m, y]
     );

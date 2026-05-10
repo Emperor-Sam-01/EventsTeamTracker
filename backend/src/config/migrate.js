@@ -2,7 +2,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '../../.env') }
 const pool = require('./database');
 
 const schema = `
--- Roles: bdm, bde, pe, bda, pa
+-- Roles: bdm, bde, sbde, pe, spe, bda, pa
 -- CPF type: local, pr, foreign
 -- Management cost: 1900 (bd roles), 1300 (project roles), 700 (assistants)
 
@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
   name VARCHAR(100) NOT NULL,
   email VARCHAR(150) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
-  role VARCHAR(10) NOT NULL CHECK (role IN ('bdm', 'bde', 'pe', 'bda', 'pa')),
+  role VARCHAR(10) NOT NULL CHECK (role IN ('bdm', 'bde', 'sbde', 'pe', 'spe', 'bda', 'pa')),
   join_date DATE NOT NULL,
   salary NUMERIC(10,2) NOT NULL DEFAULT 0,
   cpf_type VARCHAR(10) NOT NULL DEFAULT 'local' CHECK (cpf_type IN ('local', 'pr', 'foreign')),
@@ -83,6 +83,10 @@ CREATE TABLE IF NOT EXISTS sales_effort (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(user_id, week_start)
 );
+
+-- Update role constraint to include senior roles (safe to run on existing DB)
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('bdm', 'bde', 'sbde', 'pe', 'spe', 'bda', 'pa'));
 
 CREATE INDEX IF NOT EXISTS idx_projects_assigned_to ON projects(assigned_to);
 CREATE INDEX IF NOT EXISTS idx_projects_period ON projects(period_year, period_month);

@@ -17,13 +17,13 @@ function getAssistantMultiplier(tenureMonths) {
 // Returns GP tier (1/2/3) for a given role and GP amount
 // BDE: monthly GP | PE: quarterly GP | BDM: monthly personal GP
 function getGPTier(role, gp) {
-  if (role === 'bde') {
+  if (role === 'bde' || role === 'sbde') {
     if (gp >= 18000) return 3;
     if (gp >= 12000) return 2;
     if (gp >= 8000) return 1;
     return 0;
   }
-  if (role === 'pe') {
+  if (role === 'pe' || role === 'spe') {
     if (gp >= 50000) return 3;
     if (gp >= 18000) return 2;
     if (gp > 0) return 1;
@@ -38,16 +38,18 @@ function getGPTier(role, gp) {
 
 // GP targets per role
 const GP_TARGETS = {
-  bde: { t1: 8000, t2: 12000, t3: 18000, period: 'monthly' },
-  pe: { t1: 18000, t2: 50000, t3: null, period: 'quarterly' },
-  bdm: { base: 10000, period: 'monthly' },
+  bde:  { t1: 8000, t2: 12000, t3: 18000, period: 'monthly' },
+  sbde: { t1: 8000, t2: 12000, t3: 18000, period: 'monthly' },
+  pe:   { t1: 18000, t2: 50000, t3: null, period: 'quarterly' },
+  spe:  { t1: 18000, t2: 50000, t3: null, period: 'quarterly' },
+  bdm:  { base: 10000, period: 'monthly' },
 };
 
 // Sales effort baselines per role (monthly)
 function getSalesTargets(role, tier = 1) {
   const tierIndex = Math.max(1, Math.min(3, tier)) - 1;
 
-  if (role === 'bde') {
+  if (role === 'bde' || role === 'sbde') {
     return {
       cold_emails: 150,
       cold_calls: 100,
@@ -57,7 +59,7 @@ function getSalesTargets(role, tier = 1) {
       max_potential_clients: 10,
     };
   }
-  if (role === 'pe') {
+  if (role === 'pe' || role === 'spe') {
     return {
       cold_emails: 250,
       cold_calls: 0,
@@ -81,8 +83,8 @@ function getSalesTargets(role, tier = 1) {
 // Management cost per role
 function getManagementCost(role) {
   if (role === 'bda' || role === 'pa') return 700;
-  if (role === 'pe') return 1300;
-  return 1900; // bde, bdm
+  if (role === 'pe' || role === 'spe') return 1300;
+  return 1900; // bde, sbde, bdm
 }
 
 // NP = GP - salary - cpf/permit - management cost

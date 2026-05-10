@@ -65,7 +65,7 @@ export default function WeeklyMeeting() {
     }
   };
 
-  const isPE = user.role === 'pe';
+  const isPE = user.role === 'pe' || user.role === 'spe';
 
   const f = (key) => ({ value: form[key], onChange: e => setForm(prev => ({ ...prev, [key]: e.target.value })) });
 
