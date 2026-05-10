@@ -34,10 +34,10 @@ function calcTargets(role, tier, tenureMonths, existingCount, potentialCount) {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const LIST_TYPES  = ['current','pipeline','prospect'];
-const LIST_LABELS = { current:'Current Clients', pipeline:'Pipeline', prospect:'Prospects' };
-const LIST_COLORS = { current:'bg-teal-50 border-teal-200', pipeline:'bg-brand-50 border-brand-200', prospect:'bg-purple-50 border-purple-200' };
-const LIST_BADGE  = { current:'bg-teal-100 text-teal-700', pipeline:'bg-brand-100 text-brand-700', prospect:'bg-purple-100 text-purple-700' };
+const LIST_TYPES  = ['current','pipeline','prospect','lost'];
+const LIST_LABELS = { current:'Current Clients', pipeline:'Pipeline', prospect:'Prospects', lost:'Lost' };
+const LIST_COLORS = { current:'bg-teal-50 border-teal-200', pipeline:'bg-brand-50 border-brand-200', prospect:'bg-purple-50 border-purple-200', lost:'bg-gray-50 border-gray-300' };
+const LIST_BADGE  = { current:'bg-teal-100 text-teal-700', pipeline:'bg-brand-100 text-brand-700', prospect:'bg-purple-100 text-purple-700', lost:'bg-gray-200 text-gray-600' };
 
 const EMPTY_CLIENT = {
   company_name:'', project_name:'', project_type:'',
@@ -56,6 +56,51 @@ function getLastMonday() {
   const lastMonday = new Date(thisMonday);
   lastMonday.setDate(thisMonday.getDate() - 7);
   return lastMonday.toISOString().split('T')[0];
+}
+
+// Format date string as "4 May 2026" safely (noon avoids TZ shift)
+function fmtDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('en-SG', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// Format date string as "4 May" (short)
+function fmtShort(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T12:00:00');
+  return `${d.getDate()} ${d.toLocaleString('en-SG', { month: 'short' })}`;
+}
+
+// ─── MetricRow: defined OUTSIDE parent to prevent focus loss on re-render ─────
+function MetricRow({ label, targetVal, actualVal, onChange }) {
+  const hit = targetVal > 0 && parseInt(actualVal || 0) >= targetVal;
+  const pct = targetVal > 0 ? Math.min(100, Math.round(((parseInt(actualVal || 0)) / targetVal) * 100)) : 0;
+  return (
+    <div className="flex items-center gap-4 py-3 border-b last:border-0">
+      <div className="w-36 text-sm text-gray-700 shrink-0">{label}</div>
+      <div className="flex-1">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xs text-gray-500">Target: <span className="font-semibold text-gray-700">{targetVal ?? '—'}</span></span>
+          {targetVal > 0 && <span className={`text-xs font-medium ${hit ? 'text-green-600' : 'text-red-500'}`}>({pct}%)</span>}
+        </div>
+        <div className="w-full bg-gray-100 rounded-full h-1.5">
+          <div className={`h-1.5 rounded-full transition-all ${hit ? 'bg-green-500' : 'bg-brand-500'}`} style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+      <div className="w-28 shrink-0">
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          className="input text-sm text-center"
+          placeholder="Actual"
+          value={actualVal}
+          onChange={e => onChange(e.target.value)}
+        />
+      </div>
+    </div>
+  );
 }
 
 // ─── Client modal ─────────────────────────────────────────────────────────────
@@ -191,11 +236,57 @@ function ConvertToPipelineModal({ client, onSave, onClose }) {
               value={googleLink}
               onChange={e => setGoogleLink(e.target.value)}
             />
-            <p className="text-xs text-gray-400 mt-1">Add the Google Drive link or Xero quote number for this pipeline project.</p>
           </div>
           {error && <p className="text-sm text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
           <div className="flex gap-2">
             <button type="submit" disabled={saving} className="btn-primary flex-1">{saving?'Moving...':'Move to Pipeline'}</button>
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Convert Pipeline to Lost modal ──────────────────────────────────────────
+function ConvertToLostModal({ client, onSave, onClose }) {
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!reason.trim()) { setError('Please provide a reason for the loss.'); return; }
+    setSaving(true); setError('');
+    try {
+      await api.put(`/clients/${client.id}`, { list_type: 'lost', loss_reason: reason.trim() });
+      onSave();
+    } catch(err) { setError(err.response?.data?.error||'Failed to update'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+        <div className="p-5 border-b">
+          <h2 className="font-semibold text-gray-900">Mark as Lost</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Moving <strong>{client.company_name}</strong> to Lost.</p>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div>
+            <label className="label">Reason for Loss <span className="text-red-500">*</span></label>
+            <textarea
+              className="input"
+              rows={4}
+              placeholder="e.g. Client chose a competitor, budget constraints, event cancelled..."
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              required
+            />
+          </div>
+          {error && <p className="text-sm text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+          <div className="flex gap-2">
+            <button type="submit" disabled={saving} className="btn-primary flex-1 bg-red-600 hover:bg-red-700">{saving?'Saving...':'Mark as Lost'}</button>
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
           </div>
         </form>
@@ -378,7 +469,8 @@ function WeeklyMeetingSection({ clientCounts }) {
   const { user } = useAuth();
   const weekStart = getLastMonday();
   const [dashData, setDashData] = useState(null);
-  const [form, setForm] = useState({ action_items:'', cold_emails_actual:'', cold_calls_actual:'', new_clients_met_actual:'', proposals_sent_actual:'' });
+  const [actuals, setActuals] = useState({ cold_emails: '', cold_calls: '', new_clients_met: '', proposals_sent: '' });
+  const [actionItems, setActionItems] = useState('');
   const [history, setHistory] = useState([]);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -387,14 +479,14 @@ function WeeklyMeetingSection({ clientCounts }) {
   useEffect(() => {
     api.get(`/dashboard/individual/${user.id}`).then(r=>setDashData(r.data)).catch(console.error);
     api.get(`/meetings/week/${weekStart}`).then(r=>{
-      const d=r.data;
-      setForm(f=>({...f,
-        action_items: d.action_items||'',
-        cold_emails_actual: d.cold_emails_actual??'',
-        cold_calls_actual: d.cold_calls_actual??'',
-        new_clients_met_actual: d.new_clients_met_actual??'',
-        proposals_sent_actual: d.proposals_sent_actual??'',
-      }));
+      const d = r.data;
+      setActionItems(d.action_items || '');
+      setActuals({
+        cold_emails:     d.cold_emails_actual     ?? '',
+        cold_calls:      d.cold_calls_actual      ?? '',
+        new_clients_met: d.new_clients_met_actual  ?? '',
+        proposals_sent:  d.proposals_sent_actual  ?? '',
+      });
     }).catch(()=>{});
     api.get('/meetings?limit=8').then(r=>setHistory(r.data)).catch(console.error);
   }, [user.id, weekStart]);
@@ -408,11 +500,11 @@ function WeeklyMeetingSection({ clientCounts }) {
     e.preventDefault(); setSaving(true); setError(''); setSuccess(false);
     try {
       await api.post('/meetings', {
-        week_start: weekStart, action_items: form.action_items,
-        cold_emails_target: targets?.cold_emails||0,       cold_emails_actual: parseInt(form.cold_emails_actual)||0,
-        cold_calls_target: targets?.cold_calls||0,         cold_calls_actual: parseInt(form.cold_calls_actual)||0,
-        new_clients_met_target: targets?.new_clients_met||0, new_clients_met_actual: parseInt(form.new_clients_met_actual)||0,
-        proposals_sent_target: targets?.proposals_sent||0,   proposals_sent_actual: parseInt(form.proposals_sent_actual)||0,
+        week_start: weekStart, action_items: actionItems,
+        cold_emails_target: targets?.cold_emails||0,       cold_emails_actual: parseInt(actuals.cold_emails)||0,
+        cold_calls_target: targets?.cold_calls||0,         cold_calls_actual: parseInt(actuals.cold_calls)||0,
+        new_clients_met_target: targets?.new_clients_met||0, new_clients_met_actual: parseInt(actuals.new_clients_met)||0,
+        proposals_sent_target: targets?.proposals_sent||0,   proposals_sent_actual: parseInt(actuals.proposals_sent)||0,
         existing_clients_count: clientCounts.current,
         potential_clients_count: clientCounts.pipeline,
         prospect_count: clientCounts.prospect,
@@ -423,47 +515,12 @@ function WeeklyMeetingSection({ clientCounts }) {
     finally { setSaving(false); }
   };
 
-  const f = key => ({ value: form[key], onChange: e=>setForm(p=>({...p,[key]:e.target.value})) });
-
-  const MetricRow = ({ label, targetVal, actualKey }) => {
-    const actual = parseInt(form[actualKey])||0;
-    const hit = targetVal>0 && actual>=targetVal;
-    const pct = targetVal>0 ? Math.min(100,Math.round((actual/targetVal)*100)) : 0;
-    return (
-      <div className="flex items-center gap-4 py-3 border-b last:border-0">
-        <div className="w-36 text-sm text-gray-700">{label}</div>
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs text-gray-500">Target: <span className="font-semibold text-gray-700">{targetVal??'—'}</span></span>
-            {targetVal>0 && <span className={`text-xs font-medium ${hit?'text-green-600':'text-red-500'}`}>({pct}%)</span>}
-          </div>
-          <div className="w-full bg-gray-100 rounded-full h-1.5">
-            <div className={`h-1.5 rounded-full transition-all ${hit?'bg-green-500':'bg-brand-500'}`} style={{width:`${pct}%`}} />
-          </div>
-        </div>
-        <div className="w-28">
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            className="input text-sm text-center"
-            placeholder="Actual"
-            {...f(actualKey)}
-          />
-        </div>
-      </div>
-    );
-  };
-
-  const formatWeekDate = (dateStr) =>
-    new Date(dateStr).toLocaleDateString('en-SG',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-
   return (
     <div className="space-y-5">
       <div>
         <h2 className="text-base font-semibold text-gray-900">Weekly Meeting</h2>
         <p className="text-xs text-gray-500 mt-0.5">
-          Reporting actuals for week of {formatWeekDate(weekStart)}
+          Reporting actuals for week of {fmtDate(weekStart)}
         </p>
       </div>
       {hasNoTargets ? (
@@ -485,13 +542,13 @@ function WeeklyMeetingSection({ clientCounts }) {
           </div>
           <div className="card">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Sales Effort — Actuals</h3>
-            <p className="text-xs text-gray-400 mb-3">Enter what you achieved for the week of {formatWeekDate(weekStart)}.</p>
+            <p className="text-xs text-gray-400 mb-3">Enter what you achieved for the week of {fmtDate(weekStart)}.</p>
             {!targets ? <div className="text-xs text-gray-400">Loading targets...</div> : (
               <div>
-                <MetricRow label="Cold Emails"     targetVal={targets.cold_emails}     actualKey="cold_emails_actual" />
-                {!isPE && <MetricRow label="Cold Calls"      targetVal={targets.cold_calls}      actualKey="cold_calls_actual" />}
-                <MetricRow label="Proposals Sent"  targetVal={targets.proposals_sent}  actualKey="proposals_sent_actual" />
-                {!isPE && <MetricRow label="New Clients Met" targetVal={targets.new_clients_met} actualKey="new_clients_met_actual" />}
+                <MetricRow label="Cold Emails"     targetVal={targets.cold_emails}     actualVal={actuals.cold_emails}     onChange={v => setActuals(a => ({...a, cold_emails: v}))} />
+                {!isPE && <MetricRow label="Cold Calls"  targetVal={targets.cold_calls}  actualVal={actuals.cold_calls}  onChange={v => setActuals(a => ({...a, cold_calls: v}))} />}
+                <MetricRow label="Proposals Sent"  targetVal={targets.proposals_sent}  actualVal={actuals.proposals_sent}  onChange={v => setActuals(a => ({...a, proposals_sent: v}))} />
+                {!isPE && <MetricRow label="New Clients Met" targetVal={targets.new_clients_met} actualVal={actuals.new_clients_met} onChange={v => setActuals(a => ({...a, new_clients_met: v}))} />}
               </div>
             )}
           </div>
@@ -501,8 +558,9 @@ function WeeklyMeetingSection({ clientCounts }) {
             <textarea
               className="input"
               rows={6}
-              placeholder={"e.g.\n- Meet ABC Corp on Tuesday to discuss event brief\n- Send proposal to XYZ by Wednesday\n- Follow up with 3 pipeline clients\n- Cold call 20 new F&B companies"}
-              {...f('action_items')}
+              placeholder={"e.g.\n- Meet ABC Corp on Tuesday to discuss event brief\n- Send proposal to XYZ by Wednesday\n- Follow up with 3 pipeline clients"}
+              value={actionItems}
+              onChange={e => setActionItems(e.target.value)}
             />
           </div>
           {error   && <div className="text-sm text-red-600 bg-red-50 rounded-lg px-4 py-2">{error}</div>}
@@ -518,15 +576,12 @@ function WeeklyMeetingSection({ clientCounts }) {
             {history.map(m=>(
               <details key={m.id} className="border border-gray-100 rounded-xl overflow-hidden">
                 <summary className="flex items-center justify-between px-4 py-3 cursor-pointer bg-gray-50 hover:bg-gray-100 list-none">
-                  <div>
-                    <span className="text-sm font-medium text-gray-800">
-                      Week of {new Date(m.week_start).toLocaleDateString('en-SG',{day:'numeric',month:'short',year:'numeric'})}
-                    </span>
-                  </div>
+                  <span className="text-sm font-medium text-gray-800">
+                    Week of {fmtShort(m.week_start)}
+                  </span>
                   <span className="text-xs text-gray-400">▼</span>
                 </summary>
                 <div className="px-4 pb-4 pt-3 space-y-3">
-                  {/* Sales effort metrics */}
                   <div>
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Sales Effort</div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -543,7 +598,6 @@ function WeeklyMeetingSection({ clientCounts }) {
                       ))}
                     </div>
                   </div>
-                  {/* Client breakdown */}
                   <div>
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Client Pipeline</div>
                     <div className="grid grid-cols-3 gap-2">
@@ -561,7 +615,6 @@ function WeeklyMeetingSection({ clientCounts }) {
                       </div>
                     </div>
                   </div>
-                  {/* Action items */}
                   {m.action_items && (
                     <div>
                       <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Action Items</div>
@@ -587,6 +640,7 @@ export default function Clients() {
   const [showModal, setShowModal]             = useState(false);
   const [showConvert, setShowConvert]         = useState(false);
   const [showConvertPipeline, setShowConvertPipeline] = useState(false);
+  const [showConvertLost, setShowConvertLost] = useState(false);
   const [editing, setEditing]                 = useState(null);
   const [converting, setConverting]           = useState(null);
   const [listFilter, setListFilter]           = useState('');
@@ -603,11 +657,6 @@ export default function Clients() {
 
   const grouped = LIST_TYPES.reduce((acc,t) => { acc[t]=clients.filter(c=>c.list_type===t); return acc; }, {});
   const clientCounts = { current: grouped.current.length, pipeline: grouped.pipeline.length, prospect: grouped.prospect.length };
-
-  const remove = async (id) => {
-    if (!confirm('Remove this client?')) return;
-    try { await api.delete(`/clients/${id}`); load(); } catch {}
-  };
 
   return (
     <div className="space-y-5">
@@ -643,7 +692,7 @@ export default function Clients() {
           {loading ? (
             <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" /></div>
           ) : (
-            <div className="grid md:grid-cols-3 gap-4">
+            <div className="grid md:grid-cols-4 gap-4">
               {LIST_TYPES.filter(t=>!listFilter||listFilter===t).map(type=>(
                 <div key={type} className={`border rounded-xl p-4 ${LIST_COLORS[type]}`}>
                   <div className="flex items-center justify-between mb-3">
@@ -660,19 +709,13 @@ export default function Clients() {
                             {c.project_name && <div className="text-xs text-brand-600 truncate">{c.project_name}</div>}
                             {c.project_type && <div className="text-xs text-gray-400">{c.project_type}</div>}
                           </div>
-                          <div className="flex gap-1 shrink-0">
-                            {/* Current clients are read-only — edit in Projects tab */}
-                            {type !== 'current' && (
-                              <>
-                                <button onClick={()=>{setEditing(c);setShowModal(true);}} className="text-xs text-brand-600 hover:underline">Edit</button>
-                                <span className="text-gray-300">·</span>
-                              </>
-                            )}
-                            <button onClick={()=>remove(c.id)} className="text-xs text-red-500 hover:underline">✕</button>
-                          </div>
+                          {/* Edit only for prospect/pipeline */}
+                          {['prospect','pipeline'].includes(type) && (
+                            <button onClick={()=>{setEditing(c);setShowModal(true);}} className="text-xs text-brand-600 hover:underline shrink-0">Edit</button>
+                          )}
                         </div>
                         {c.contact_name && <div className="text-xs text-gray-600 mt-1">👤 {c.contact_name}{c.contact_details && ` · ${c.contact_details}`}</div>}
-                        {c.event_date && <div className="text-xs text-gray-500 mt-0.5">📅 {new Date(c.event_date).toLocaleDateString('en-SG',{day:'numeric',month:'short',year:'numeric'})}</div>}
+                        {c.event_date && <div className="text-xs text-gray-500 mt-0.5">📅 {fmtDate(c.event_date)}</div>}
                         {(c.estimated_revenue||c.estimated_gp) && (
                           <div className="text-xs mt-0.5">
                             {c.estimated_revenue && <span className="text-gray-500">Rev: {formatCurrency(c.estimated_revenue)} </span>}
@@ -687,11 +730,13 @@ export default function Clients() {
                             }
                           </div>
                         )}
+                        {c.loss_reason && <div className="text-xs text-red-600 mt-1 bg-red-50 rounded px-2 py-1">Reason: {c.loss_reason}</div>}
                         {c.notes && <div className="text-xs text-gray-400 mt-1 italic line-clamp-2">{c.notes}</div>}
                         {['bdm','exec_pa'].includes(user.role) && c.member_name && (
                           <div className="text-xs text-brand-600 mt-1 font-medium">{c.member_name}</div>
                         )}
-                        {/* Prospect: Convert to Pipeline */}
+
+                        {/* Prospect actions */}
                         {type === 'prospect' && (
                           <button
                             onClick={()=>{setConverting(c);setShowConvertPipeline(true);}}
@@ -700,15 +745,25 @@ export default function Clients() {
                             → Move to Pipeline
                           </button>
                         )}
-                        {/* Pipeline: Convert to Current Client */}
+
+                        {/* Pipeline actions */}
                         {type === 'pipeline' && (
-                          <button
-                            onClick={()=>{setConverting(c);setShowConvert(true);}}
-                            className="mt-2 w-full text-xs bg-brand-600 hover:bg-brand-700 text-white rounded-md py-1.5 font-medium transition-colors"
-                          >
-                            ✓ Convert to Current Client
-                          </button>
+                          <div className="mt-2 space-y-1.5">
+                            <button
+                              onClick={()=>{setConverting(c);setShowConvert(true);}}
+                              className="w-full text-xs bg-brand-600 hover:bg-brand-700 text-white rounded-md py-1.5 font-medium transition-colors"
+                            >
+                              ✓ Convert to Current Client
+                            </button>
+                            <button
+                              onClick={()=>{setConverting(c);setShowConvertLost(true);}}
+                              className="w-full text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded-md py-1.5 font-medium transition-colors"
+                            >
+                              ✕ Mark as Lost
+                            </button>
+                          </div>
                         )}
+
                         {type === 'current' && (
                           <div className="mt-2 text-xs text-gray-400 text-center italic">Manage in Projects tab</div>
                         )}
@@ -732,6 +787,9 @@ export default function Clients() {
       )}
       {showConvertPipeline && converting && (
         <ConvertToPipelineModal client={converting} onSave={()=>{setShowConvertPipeline(false);setConverting(null);load();}} onClose={()=>{setShowConvertPipeline(false);setConverting(null);}} />
+      )}
+      {showConvertLost && converting && (
+        <ConvertToLostModal client={converting} onSave={()=>{setShowConvertLost(false);setConverting(null);load();}} onClose={()=>{setShowConvertLost(false);setConverting(null);}} />
       )}
     </div>
   );

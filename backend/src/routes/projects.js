@@ -77,7 +77,7 @@ router.get('/:id', authenticate, async (req, res) => {
 
 // Create project
 router.post('/', authenticate, async (req, res) => {
-  const { title, client_name, project_type, event_date, confirmation_date, revenue, cost, status, assigned_to, project_google_link, notes, crew } = req.body;
+  const { title, client_name, project_type, event_date, confirmation_date, revenue, cost, status, assigned_to, project_google_link, notes, crew, cancellation_reason } = req.body;
   if (!title || !client_name || revenue == null || cost == null) {
     return res.status(400).json({ error: 'title, client_name, revenue, cost are required' });
   }
@@ -91,9 +91,9 @@ router.post('/', authenticate, async (req, res) => {
   try {
     await db.query('BEGIN');
     const { rows } = await db.query(
-      `INSERT INTO projects (title, client_name, project_type, event_date, confirmation_date, revenue, cost, status, assigned_to, period_month, period_year, project_google_link, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [title, client_name, project_type || 'Others', event_date || null, confirmation_date || null, revenue, cost, status || 'pending', assignee, pMonth, pYear, project_google_link || null, notes || null]
+      `INSERT INTO projects (title, client_name, project_type, event_date, confirmation_date, revenue, cost, status, assigned_to, period_month, period_year, project_google_link, notes, cancellation_reason)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      [title, client_name, project_type || 'Others', event_date || null, confirmation_date || null, revenue, cost, status || 'confirmed', assignee, pMonth, pYear, project_google_link || null, notes || null, cancellation_reason || null]
     );
     const project = rows[0];
     await saveCrew(db, project.id, crew, assignee);
@@ -110,7 +110,7 @@ router.post('/', authenticate, async (req, res) => {
 
 // Update project
 router.put('/:id', authenticate, async (req, res) => {
-  const { title, client_name, project_type, event_date, confirmation_date, revenue, cost, status, assigned_to, project_google_link, notes, crew } = req.body;
+  const { title, client_name, project_type, event_date, confirmation_date, revenue, cost, status, assigned_to, project_google_link, notes, crew, cancellation_reason } = req.body;
   const db = await pool.connect();
   try {
     const { rows: existing } = await db.query('SELECT * FROM projects WHERE id = $1', [req.params.id]);
@@ -120,30 +120,43 @@ router.put('/:id', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
     const p = existing[0];
+    const newStatus = status ?? p.status;
     const newConfirmation = confirmation_date !== undefined ? confirmation_date : p.confirmation_date;
     const periodDate = newConfirmation ? new Date(newConfirmation) : new Date();
     const pMonth = newConfirmation ? periodDate.getMonth() + 1 : p.period_month;
     const pYear = newConfirmation ? periodDate.getFullYear() : p.period_year;
+    const newClientName = client_name ?? p.client_name;
+    const newAssignee = isBDM && assigned_to ? assigned_to : p.assigned_to;
 
     await db.query('BEGIN');
     const { rows } = await db.query(
       `UPDATE projects SET
         title=$1, client_name=$2, project_type=$3, event_date=$4, confirmation_date=$5,
         revenue=$6, cost=$7, status=$8, assigned_to=$9, period_month=$10, period_year=$11,
-        project_google_link=$12, notes=$13, updated_at=NOW()
-       WHERE id=$14 RETURNING *`,
+        project_google_link=$12, notes=$13, cancellation_reason=$14, updated_at=NOW()
+       WHERE id=$15 RETURNING *`,
       [
-        title ?? p.title, client_name ?? p.client_name, project_type ?? p.project_type,
+        title ?? p.title, newClientName, project_type ?? p.project_type,
         event_date !== undefined ? event_date : p.event_date, newConfirmation,
-        revenue ?? p.revenue, cost ?? p.cost, status ?? p.status,
-        isBDM && assigned_to ? assigned_to : p.assigned_to,
-        pMonth, pYear,
+        revenue ?? p.revenue, cost ?? p.cost, newStatus,
+        newAssignee, pMonth, pYear,
         project_google_link !== undefined ? project_google_link : p.project_google_link,
         notes !== undefined ? notes : p.notes,
+        cancellation_reason !== undefined ? cancellation_reason : p.cancellation_reason,
         req.params.id,
       ]
     );
     if (crew !== undefined) await saveCrew(db, parseInt(req.params.id), crew, rows[0].assigned_to);
+
+    // Auto-deactivate matching current client when project completes or cancels
+    if (['completed', 'cancelled'].includes(newStatus) && !['completed', 'cancelled'].includes(p.status)) {
+      await db.query(
+        `UPDATE clients SET is_active = FALSE, updated_at = NOW()
+         WHERE user_id = $1 AND company_name = $2 AND list_type = 'current' AND is_active = TRUE`,
+        [newAssignee, newClientName]
+      );
+    }
+
     await db.query('COMMIT');
     res.json(rows[0]);
   } catch (err) {

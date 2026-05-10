@@ -106,6 +106,14 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS google_link TEXT;
 -- Sales effort: separate pipeline/prospect counts
 ALTER TABLE sales_effort ADD COLUMN IF NOT EXISTS prospect_count INTEGER NOT NULL DEFAULT 0;
 
+-- Clients: lost category and loss reason
+ALTER TABLE clients DROP CONSTRAINT IF EXISTS clients_list_type_check;
+ALTER TABLE clients ADD CONSTRAINT clients_list_type_check CHECK (list_type IN ('current', 'pipeline', 'prospect', 'lost'));
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS loss_reason TEXT;
+
+-- Projects: cancellation reason
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
+
 -- GP distribution across crew members on a project
 CREATE TABLE IF NOT EXISTS project_crew (
   id SERIAL PRIMARY KEY,

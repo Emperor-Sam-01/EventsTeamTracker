@@ -5,13 +5,13 @@ export const formatPct = (val, total) =>
   total ? `${Math.round((val / total) * 100)}%` : '0%';
 
 export const ROLE_LABELS = {
-  bdm:     'BD Manager / Team Lead',
-  exec_pa: 'Personal Assistant',
-  bde:     'BD Executive',
-  sbde:    'Senior BD Executive',
+  bdm:     'Business Development Manager',
+  exec_pa: 'Executive Personal Assistant',
+  bde:     'Business Development Executive',
+  sbde:    'Senior Business Development Executive',
   pe:      'Project Executive',
   spe:     'Senior Project Executive',
-  bda:     'BD Assistant',
+  bda:     'Business Development Assistant',
   pa:      'Project Assistant',
 };
 

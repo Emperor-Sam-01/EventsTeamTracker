@@ -7,7 +7,7 @@ import { EVENT_TYPES } from '../utils/constants';
 const EMPTY = {
   title: '', client_name: '', project_type: EVENT_TYPES[0],
   confirmation_date: '', event_date: '', revenue: '', cost: '',
-  status: 'confirmed', project_google_link: '', notes: '',
+  status: 'confirmed', project_google_link: '', notes: '', cancellation_reason: '',
 };
 
 function CrewRow({ member, users, onUpdate, onRemove, disabledIds }) {
@@ -51,6 +51,7 @@ function ProjectModal({ project, onSave, onClose }) {
     confirmation_date: project.confirmation_date?.split('T')[0] || '',
     event_date: project.event_date?.split('T')[0] || '',
     project_google_link: project.project_google_link || '',
+    cancellation_reason: project.cancellation_reason || '',
   } : EMPTY);
   const [users, setUsers] = useState([]);
   const [crew, setCrew] = useState([]);
@@ -288,11 +289,10 @@ function ProjectModal({ project, onSave, onClose }) {
           </div>
 
           <div>
-            <label className="label">Project Google Link</label>
+            <label className="label">Project Google Drive Link / Xero Quote No.</label>
             <input
-              type="url"
               className="input"
-              placeholder="https://drive.google.com/..."
+              placeholder="https://drive.google.com/... or Xero quote number"
               value={form.project_google_link}
               onChange={e => setForm(f => ({ ...f, project_google_link: e.target.value }))}
             />
@@ -301,6 +301,19 @@ function ProjectModal({ project, onSave, onClose }) {
             <label className="label">Notes</label>
             <textarea className="input" rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
           </div>
+          {form.status === 'cancelled' && (
+            <div className="border border-red-200 bg-red-50 rounded-xl p-4">
+              <label className="label text-red-700">Reason for Cancellation <span className="text-red-500">*</span></label>
+              <textarea
+                className="input border-red-300 focus:border-red-500 focus:ring-red-500"
+                rows={3}
+                placeholder="e.g. Client pulled out due to budget constraints..."
+                value={form.cancellation_reason}
+                onChange={e => setForm(f => ({ ...f, cancellation_reason: e.target.value }))}
+                required
+              />
+            </div>
+          )}
 
           {error && <p className="text-sm text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
           <div className="flex gap-2 pt-2">
@@ -401,6 +414,12 @@ export default function Projects() {
                       <a href={p.project_google_link} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-600 hover:underline mt-0.5 block">
                         Google Drive ↗
                       </a>
+                    )}
+                    {p.project_google_link && !/^https?:\/\//i.test(p.project_google_link) && (
+                      <div className="text-xs text-gray-400 mt-0.5">📎 {p.project_google_link}</div>
+                    )}
+                    {p.cancellation_reason && (
+                      <div className="text-xs text-red-600 mt-0.5 italic">Cancelled: {p.cancellation_reason}</div>
                     )}
                   </td>
                   <td className="py-3 px-4 text-gray-600">{p.client_name}</td>

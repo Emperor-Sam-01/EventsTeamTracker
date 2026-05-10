@@ -18,21 +18,69 @@ function ProgressBar({ value, max, color = 'bg-brand-500' }) {
   );
 }
 
+// Custom tooltip for the GP trend line chart
+function GpTrendTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-xs space-y-1 min-w-[140px]">
+      <div className="font-semibold text-gray-700 mb-1">{label}</div>
+      {payload.map(p => (
+        <div key={p.dataKey} className="flex items-center justify-between gap-3">
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
+            {p.name}
+          </span>
+          <span className="font-medium">{p.value != null ? formatCurrency(p.value) : '—'}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Custom tooltip for the sales effort bar chart
+function EffortTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0]?.payload || {};
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-xs space-y-1 min-w-[160px]">
+      <div className="font-semibold text-gray-700 mb-1">Week: {label}</div>
+      {[
+        { label: 'Emails', actual: d.emails, target: d.emails_target },
+        { label: 'Calls',  actual: d.calls,  target: d.calls_target },
+        { label: 'Proposals', actual: d.proposals, target: d.proposals_target },
+      ].filter(r => r.actual != null).map(r => (
+        <div key={r.label} className="flex justify-between gap-3">
+          <span className="text-gray-500">{r.label}</span>
+          <span className={r.actual >= r.target ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}>
+            {r.actual} / {r.target}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Flip card: click to toggle between two views
 function FlipCard({ labelA, valueA, subA, colorA, labelB, valueB, subB, colorB }) {
   const [flipped, setFlipped] = useState(false);
-  const label = flipped ? labelB : labelA;
-  const value = flipped ? valueB : valueA;
-  const sub   = flipped ? subB   : subA;
-  const color = flipped ? colorB : colorA;
   return (
-    <div className="card cursor-pointer select-none group relative" onClick={() => setFlipped(f => !f)} title="Click to toggle view">
-      <div className="text-xs text-gray-500 font-medium uppercase tracking-wide flex items-center gap-1">
-        {label}
-        <span className="text-gray-300 group-hover:text-brand-400 transition-colors text-xs">⇄</span>
+    <div
+      className="card cursor-pointer select-none border-2 border-transparent hover:border-brand-300 transition-all relative"
+      onClick={() => setFlipped(f => !f)}
+    >
+      <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+        {flipped ? labelB : labelA}
       </div>
-      <div className={`text-2xl font-bold mt-1 ${color || 'text-gray-900'}`}>{value}</div>
-      {sub && <div className="text-xs text-gray-500 mt-0.5">{sub}</div>}
+      <div className={`text-2xl font-bold mt-1 ${(flipped ? colorB : colorA) || 'text-gray-900'}`}>
+        {flipped ? valueB : valueA}
+      </div>
+      {(flipped ? subB : subA) && (
+        <div className="text-xs text-gray-500 mt-0.5">{flipped ? subB : subA}</div>
+      )}
+      <div className="mt-2 text-xs text-brand-500 font-medium flex items-center gap-1">
+        <span>↔</span>
+        <span>Click to see {flipped ? labelA : labelB}</span>
+      </div>
     </div>
   );
 }
@@ -47,20 +95,11 @@ function StatCard({ label, value, sub, color }) {
   );
 }
 
-// Compute simple linear projection from last N data points
-function computeProjection(historicalGP, futureCount) {
-  const valid = historicalGP.filter(v => v != null && v > 0);
-  if (valid.length === 0) return Array(futureCount).fill(0);
-  const recent = valid.slice(-3);
-  const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
-  // Simple linear trend from last 2 points
-  if (recent.length >= 2) {
-    const trend = (recent[recent.length - 1] - recent[0]) / (recent.length - 1);
-    return Array.from({ length: futureCount }, (_, i) =>
-      Math.max(0, avg + trend * (i + 1))
-    );
-  }
-  return Array(futureCount).fill(avg);
+// Format date string "2026-05-04" as "4 May" safely (noon avoids TZ shift)
+function fmtMonday(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T12:00:00');
+  return `${d.getDate()} ${d.toLocaleString('en-SG', { month: 'short' })}`;
 }
 
 export default function IndividualDashboard() {
@@ -78,7 +117,7 @@ export default function IndividualDashboard() {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(displayName);
 
-  // Toggle lines on GP trend chart
+  // Toggle benchmark lines on GP trend chart
   const [showLines, setShowLines] = useState({ avg: true, best: false, worst: false });
 
   useEffect(() => {
@@ -88,11 +127,7 @@ export default function IndividualDashboard() {
       api.get(`/dashboard/benchmarks?month=${period.month}&year=${period.year}`),
       api.get(`/dashboard/benchmarks-trend?month=${period.month}&year=${period.year}`),
     ])
-      .then(([d, b, bt]) => {
-        setData(d.data);
-        setBenchmarks(b.data);
-        setBenchmarkTrend(bt.data);
-      })
+      .then(([d, b, bt]) => { setData(d.data); setBenchmarks(b.data); setBenchmarkTrend(bt.data); })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [user.id, period]);
@@ -102,63 +137,47 @@ export default function IndividualDashboard() {
 
   const { gp, clients, sales_effort, gp_trend } = data;
   const isPE = ['pe', 'spe'].includes(data.user.role);
-  const gpTarget = gp.targets ? gp.targets.t1 * data.user.multiplier : 0;
+  const multiplier = data.user.multiplier;
+  const targets = gp.targets || {};
+
+  // Tier targets (adjusted for multiplier)
+  const t1 = targets.t1 ? targets.t1 * multiplier : null;
+  const t2 = targets.t2 ? targets.t2 * multiplier : null;
+  const t3 = targets.t3 ? targets.t3 * multiplier : null;
   const yearlyGP = gp.yearly || 0;
 
   const effortHistory = (sales_effort.history || []).map(e => ({
-    week: e.week_start?.slice(5),
+    week: fmtMonday(e.week_start),
     emails: e.cold_emails_actual,
+    emails_target: e.cold_emails_target,
     calls: e.cold_calls_actual,
+    calls_target: e.cold_calls_target,
     proposals: e.proposals_sent_actual,
+    proposals_target: e.proposals_sent_target,
     meetings: e.new_clients_met_actual,
   })).reverse();
 
+  // Current targets (from dashboard, not from last week's submission)
+  const currentTargets = sales_effort.targets || {};
   const effortItems = [
-    { key: 'cold_emails', label: 'Cold Emails', actual: sales_effort.latest?.cold_emails_actual ?? 0, target: sales_effort.targets?.cold_emails, color: 'bg-blue-500' },
-    { key: 'cold_calls', label: 'Cold Calls', actual: sales_effort.latest?.cold_calls_actual ?? 0, target: sales_effort.targets?.cold_calls, color: 'bg-indigo-500', hide: isPE },
-    { key: 'proposals_sent', label: 'Proposals Sent', actual: sales_effort.latest?.proposals_sent_actual ?? 0, target: sales_effort.targets?.proposals_sent, color: 'bg-teal-500' },
-    { key: 'new_clients_met', label: 'New Clients Met', actual: sales_effort.latest?.new_clients_met_actual ?? 0, target: sales_effort.targets?.new_clients_met, color: 'bg-purple-500', hide: isPE },
+    { key: 'cold_emails', label: 'Cold Emails', actual: sales_effort.latest?.cold_emails_actual ?? 0, target: currentTargets.cold_emails, color: 'bg-blue-500' },
+    { key: 'cold_calls', label: 'Cold Calls', actual: sales_effort.latest?.cold_calls_actual ?? 0, target: currentTargets.cold_calls, color: 'bg-indigo-500', hide: isPE },
+    { key: 'proposals_sent', label: 'Proposals Sent', actual: sales_effort.latest?.proposals_sent_actual ?? 0, target: currentTargets.proposals_sent, color: 'bg-teal-500' },
+    { key: 'new_clients_met', label: 'New Clients Met', actual: sales_effort.latest?.new_clients_met_actual ?? 0, target: currentTargets.new_clients_met, color: 'bg-purple-500', hide: isPE },
   ].filter(i => !i.hide);
 
-  // Build 12-month chart data: 6 history + 6 projection
-  const historyMonths = (gp_trend || []).map(t => ({
-    name: monthName(parseInt(t.month.split('-')[1])),
-    monthKey: t.month,
-    gp: parseFloat(t.gp),
-  }));
-
-  const projectedValues = computeProjection(historyMonths.map(h => h.gp), 6);
-  const lastHistoryMonth = historyMonths[historyMonths.length - 1];
-
-  const futureMonths = Array.from({ length: 6 }, (_, i) => {
-    const base = lastHistoryMonth?.monthKey || `${period.year}-${String(period.month).padStart(2,'0')}`;
-    const [y, m] = base.split('-').map(Number);
-    const d = new Date(y, m - 1 + i + 1, 1);
-    return {
-      name: monthName(d.getMonth() + 1),
-      monthKey: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,
-      projection: projectedValues[i],
-    };
-  });
-
-  // Merge benchmark trend into chart data
+  // GP trend chart data (6 months history only — no projection)
   const trendMap = {};
   benchmarkTrend.forEach(b => { trendMap[b.month] = b; });
 
-  const chartData = [
-    ...historyMonths.map(h => ({
-      ...h,
-      projection: null,
-      team_avg:   trendMap[h.monthKey]?.avg_gp ?? null,
-      team_best:  trendMap[h.monthKey]?.best_gp ?? null,
-      team_worst: trendMap[h.monthKey]?.worst_gp ?? null,
-    })),
-    ...futureMonths.map(f => ({
-      ...f,
-      gp: null,
-      team_avg: null, team_best: null, team_worst: null,
-    })),
-  ];
+  const chartData = (gp_trend || []).map(t => ({
+    name: monthName(parseInt(t.month.split('-')[1])),
+    monthKey: t.month,
+    gp: parseFloat(t.gp),
+    team_avg:   trendMap[t.month]?.avg_gp ?? null,
+    team_best:  trendMap[t.month]?.best_gp ?? null,
+    team_worst: trendMap[t.month]?.worst_gp ?? null,
+  }));
 
   const saveName = () => {
     const trimmed = nameDraft.trim() || user.name;
@@ -192,7 +211,9 @@ export default function IndividualDashboard() {
               <button onClick={() => { setNameDraft(displayName); setEditingName(true); }} className="text-gray-400 hover:text-brand-600 text-sm" title="Edit name">✎</button>
             </div>
           )}
-          <p className="text-sm text-gray-500 mt-0.5">{ROLE_LABELS[data.user.role]}{data.user.multiplier < 1 ? ` · ${Math.round(data.user.multiplier * 100)}% target multiplier` : ''}</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {ROLE_LABELS[data.user.role]}{multiplier < 1 ? ` · ${Math.round(multiplier * 100)}% target multiplier` : ''}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <select className="input w-auto text-xs" value={period.month} onChange={e => setPeriod(p => ({ ...p, month: parseInt(e.target.value) }))}>
@@ -210,7 +231,7 @@ export default function IndividualDashboard() {
           <FlipCard
             labelA="Quarterly GP"
             valueA={formatCurrency(gp.quarterly)}
-            subA={`${TIER_LABEL[gp.tier]} · Target: ${formatCurrency(gpTarget)}`}
+            subA={`${TIER_LABEL[gp.tier]} · T1: ${t1 ? formatCurrency(t1) : '—'}`}
             colorA={TIER_COLORS[gp.tier]}
             labelB="Yearly GP"
             valueB={formatCurrency(yearlyGP)}
@@ -221,7 +242,7 @@ export default function IndividualDashboard() {
           <FlipCard
             labelA="Monthly GP"
             valueA={formatCurrency(gp.monthly)}
-            subA={`${TIER_LABEL[gp.tier]} · Target: ${formatCurrency(gpTarget)}`}
+            subA={`${TIER_LABEL[gp.tier]} · T1: ${t1 ? formatCurrency(t1) : '—'}`}
             colorA={TIER_COLORS[gp.tier]}
             labelB="Yearly GP"
             valueB={formatCurrency(yearlyGP)}
@@ -266,12 +287,12 @@ export default function IndividualDashboard() {
         </div>
       )}
 
-      {/* GP Trend + Projection */}
+      {/* GP Trend */}
       <div className="card">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-gray-700">GP Trend — 6 Month History + 6 Month Projection</h2>
+          <h2 className="text-sm font-semibold text-gray-700">GP Trend — Last 6 Months</h2>
         </div>
-        {/* Line toggles */}
+        {/* Benchmark line toggles */}
         <div className="flex flex-wrap gap-3 mb-4">
           {[
             { key: 'avg',   label: 'Team Avg',    color: '#3b82f6' },
@@ -279,12 +300,7 @@ export default function IndividualDashboard() {
             { key: 'worst', label: 'Team Lowest', color: '#ef4444' },
           ].map(line => (
             <label key={line.key} className="flex items-center gap-1.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showLines[line.key]}
-                onChange={() => toggleLine(line.key)}
-                className="rounded"
-              />
+              <input type="checkbox" checked={showLines[line.key]} onChange={() => toggleLine(line.key)} className="rounded" />
               <span className="text-xs text-gray-600 flex items-center gap-1">
                 <span className="inline-block w-4 h-0.5 rounded" style={{ backgroundColor: line.color }} />
                 {line.label}
@@ -297,11 +313,12 @@ export default function IndividualDashboard() {
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="name" tick={{ fontSize: 11 }} />
             <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
-            <Tooltip formatter={(v, name) => [formatCurrency(v), name]} />
+            <Tooltip content={<GpTrendTooltip />} />
             <Legend />
-            <ReferenceLine y={gpTarget} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Target', fontSize: 10, fill: '#f59e0b' }} />
+            {t1 && <ReferenceLine y={t1} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'T1', fontSize: 10, fill: '#f59e0b', position: 'insideTopRight' }} />}
+            {t2 && <ReferenceLine y={t2} stroke="#3b82f6" strokeDasharray="4 4" label={{ value: 'T2', fontSize: 10, fill: '#3b82f6', position: 'insideTopRight' }} />}
+            {t3 && <ReferenceLine y={t3} stroke="#22c55e" strokeDasharray="4 4" label={{ value: 'T3', fontSize: 10, fill: '#22c55e', position: 'insideTopRight' }} />}
             <Line type="monotone" dataKey="gp" stroke="#f97316" strokeWidth={2.5} dot={{ r: 4 }} name="Your GP" connectNulls={false} />
-            <Line type="monotone" dataKey="projection" stroke="#f97316" strokeWidth={2} strokeDasharray="5 4" dot={{ r: 3 }} name="Projection" connectNulls={false} />
             {showLines.avg   && <Line type="monotone" dataKey="team_avg"   stroke="#3b82f6" strokeWidth={1.5} dot={false} name="Team Avg"    connectNulls={false} />}
             {showLines.best  && <Line type="monotone" dataKey="team_best"  stroke="#22c55e" strokeWidth={1.5} dot={false} name="Team Best"   connectNulls={false} />}
             {showLines.worst && <Line type="monotone" dataKey="team_worst" stroke="#ef4444" strokeWidth={1.5} dot={false} name="Team Lowest" connectNulls={false} />}
@@ -312,19 +329,20 @@ export default function IndividualDashboard() {
       {/* Sales Effort */}
       <div className="grid md:grid-cols-2 gap-4">
         <div className="card">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Sales Effort — Latest Week</h2>
+          <h2 className="text-sm font-semibold text-gray-700 mb-1">Current Sales Targets</h2>
+          <p className="text-xs text-gray-400 mb-4">Current targets vs latest submitted actuals</p>
           <div className="space-y-4">
             {effortItems.map(item => (
               <div key={item.key}>
                 <div className="flex justify-between text-xs">
                   <span className="text-gray-600">{item.label}</span>
-                  <span className="font-medium">{item.actual} / {item.target} target</span>
+                  <span className="font-medium">{item.actual} actual / <span className="text-brand-600">{item.target} target</span></span>
                 </div>
                 <ProgressBar value={item.actual} max={item.target || 1} color={item.actual >= item.target ? 'bg-green-500' : item.color} />
               </div>
             ))}
           </div>
-          {!sales_effort.latest && <p className="text-xs text-gray-400 mt-2">No data submitted yet.</p>}
+          {!sales_effort.latest && <p className="text-xs text-gray-400 mt-2">No actuals submitted yet.</p>}
         </div>
 
         <div className="card">
@@ -333,7 +351,7 @@ export default function IndividualDashboard() {
             <BarChart data={effortHistory}>
               <XAxis dataKey="week" tick={{ fontSize: 10 }} />
               <YAxis tick={{ fontSize: 10 }} />
-              <Tooltip />
+              <Tooltip content={<EffortTooltip />} />
               <Bar dataKey="emails" fill="#f97316" name="Emails" />
               {!isPE && <Bar dataKey="calls" fill="#6366f1" name="Calls" />}
               <Bar dataKey="proposals" fill="#14b8a6" name="Proposals" />
@@ -347,9 +365,9 @@ export default function IndividualDashboard() {
         <h2 className="text-sm font-semibold text-gray-700 mb-4">Client Pipeline Summary</h2>
         <div className="grid grid-cols-3 gap-4 text-center">
           {[
-            { label: 'Current Clients', value: clients.current, max: sales_effort.targets?.max_existing_clients, color: 'bg-teal-500' },
+            { label: 'Current Clients', value: clients.current, max: currentTargets.max_existing_clients, color: 'bg-teal-500' },
             { label: 'Pipeline', value: clients.pipeline, max: null, color: 'bg-blue-500' },
-            { label: 'Prospects', value: clients.prospect, max: sales_effort.targets?.max_potential_clients, color: 'bg-purple-500' },
+            { label: 'Prospects', value: clients.prospect, max: currentTargets.max_potential_clients, color: 'bg-purple-500' },
           ].map(c => (
             <div key={c.label}>
               <div className="text-2xl font-bold text-gray-900">{c.value}</div>
