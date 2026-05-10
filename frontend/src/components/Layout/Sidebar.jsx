@@ -1,12 +1,12 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { ROLE_LABELS } from '../../utils/format';
 
 const navItems = [
   { to: '/', label: 'My Dashboard', icon: '📊', exact: true },
   { to: '/projects', label: 'Projects', icon: '📁' },
-  { to: '/clients', label: 'Clients', icon: '👥' },
-  { to: '/meeting', label: 'Weekly Meeting', icon: '📅' },
+  { to: '/clients', label: 'Clients & Activity', icon: '👥' },
 ];
 
 const bdmItems = [
@@ -25,10 +25,18 @@ export default function Sidebar({ open, onClose }) {
         md:relative md:translate-x-0
         ${open ? 'translate-x-0' : '-translate-x-full'}
       `}>
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-brand-800">
-          <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center text-sm font-black text-white">E</div>
-          <div>
-            <div className="text-sm font-black tracking-widest leading-tight text-white">ELITEZ EVENTS</div>
+        <div className="flex items-center justify-center px-5 py-4 border-b border-brand-800">
+          <img
+            src="/logo-white.png"
+            alt="Elitez Events"
+            className="h-10 w-auto object-contain"
+            onError={e => {
+              e.target.style.display = 'none';
+              e.target.nextSibling.style.display = 'block';
+            }}
+          />
+          <div style={{ display: 'none' }}>
+            <div className="text-sm font-black tracking-widest text-white">ELITEZ EVENTS</div>
             <div className="text-xs text-brand-300">Team Tracker</div>
           </div>
         </div>
@@ -42,7 +50,7 @@ export default function Sidebar({ open, onClose }) {
               onClick={onClose}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
-                 ${isActive ? 'bg-brand-700 text-white' : 'text-brand-200 hover:bg-brand-800 hover:text-white'}`
+                 ${isActive ? 'bg-brand-600 text-white' : 'text-brand-200 hover:bg-brand-800 hover:text-white'}`
               }
             >
               <span>{item.icon}</span>
@@ -52,7 +60,7 @@ export default function Sidebar({ open, onClose }) {
 
           {['bdm', 'exec_pa'].includes(user?.role) && (
             <>
-              <div className="pt-4 pb-1 px-3 text-xs font-semibold text-brand-400 uppercase tracking-wider">Team Lead</div>
+              <div className="pt-4 pb-1 px-3 text-xs font-semibold text-brand-300 uppercase tracking-wider">Team Lead</div>
               {bdmItems.map(item => (
                 <NavLink
                   key={item.to}
@@ -60,7 +68,7 @@ export default function Sidebar({ open, onClose }) {
                   onClick={onClose}
                   className={({ isActive }) =>
                     `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
-                     ${isActive ? 'bg-brand-700 text-white' : 'text-brand-200 hover:bg-brand-800 hover:text-white'}`
+                     ${isActive ? 'bg-brand-600 text-white' : 'text-brand-200 hover:bg-brand-800 hover:text-white'}`
                   }
                 >
                   <span>{item.icon}</span>
@@ -72,8 +80,8 @@ export default function Sidebar({ open, onClose }) {
         </nav>
 
         <div className="px-4 py-3 border-t border-brand-800">
-          <div className="text-xs text-brand-400">{user?.name}</div>
-          <div className="text-xs text-brand-500 capitalize">{user?.role?.toUpperCase()}</div>
+          <div className="text-xs font-medium text-white">{user?.name}</div>
+          <div className="text-xs text-brand-300">{ROLE_LABELS[user?.role]}</div>
         </div>
       </aside>
     </>

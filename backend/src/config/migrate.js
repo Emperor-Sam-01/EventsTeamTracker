@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS projects (
   client_name VARCHAR(150) NOT NULL,
   project_type VARCHAR(20) NOT NULL DEFAULT 'events' CHECK (project_type IN ('events', 'non_events')),
   event_date DATE,
+  confirmation_date DATE,
   revenue NUMERIC(12,2) NOT NULL DEFAULT 0,
   cost NUMERIC(12,2) NOT NULL DEFAULT 0,
   gp NUMERIC(12,2) GENERATED ALWAYS AS (revenue - cost) STORED,
@@ -85,6 +86,9 @@ CREATE TABLE IF NOT EXISTS sales_effort (
 );
 
 -- Update role constraint to include senior roles (safe to run on existing DB)
+-- Add confirmation_date to projects if not exists
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS confirmation_date DATE;
+
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('bdm', 'exec_pa', 'bde', 'sbde', 'pe', 'spe', 'bda', 'pa'));
 

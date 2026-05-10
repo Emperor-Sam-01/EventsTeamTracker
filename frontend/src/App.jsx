@@ -7,7 +7,6 @@ import IndividualDashboard from './pages/IndividualDashboard';
 import TeamDashboard from './pages/TeamDashboard';
 import Projects from './pages/Projects';
 import Clients from './pages/Clients';
-import WeeklyMeeting from './pages/WeeklyMeeting';
 import TeamManagement from './pages/TeamManagement';
 
 function PrivateRoute({ children }) {
@@ -32,7 +31,6 @@ export default function App() {
             <Route path="team" element={<BDMRoute><TeamDashboard /></BDMRoute>} />
             <Route path="projects" element={<Projects />} />
             <Route path="clients" element={<Clients />} />
-            <Route path="meeting" element={<WeeklyMeeting />} />
             <Route path="team-management" element={<BDMRoute><TeamManagement /></BDMRoute>} />
           </Route>
         </Routes>
