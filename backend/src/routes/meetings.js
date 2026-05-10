@@ -1,10 +1,9 @@
 const express = require('express');
 const pool = require('../config/database');
-const { authenticate, requireBDM } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Get Monday of the current week
 function getWeekStart(dateStr) {
   const date = dateStr ? new Date(dateStr) : new Date();
   const day = date.getDay();
@@ -13,10 +12,10 @@ function getWeekStart(dateStr) {
   return monday.toISOString().split('T')[0];
 }
 
-// List meetings - BDM sees all, others see own
+// List meetings - BDM/exec_pa sees all, others see own
 router.get('/', authenticate, async (req, res) => {
   const { user_id, limit = 12 } = req.query;
-  const isBDM = req.user.role === 'bdm';
+  const isBDM = ['bdm', 'exec_pa'].includes(req.user.role);
   const params = [];
   const conditions = [];
 
@@ -38,7 +37,7 @@ router.get('/', authenticate, async (req, res) => {
         se.cold_calls_target, se.cold_calls_actual,
         se.new_clients_met_target, se.new_clients_met_actual,
         se.proposals_sent_target, se.proposals_sent_actual,
-        se.existing_clients_count, se.potential_clients_count
+        se.existing_clients_count, se.potential_clients_count, se.prospect_count
        FROM weekly_meetings wm
        JOIN users u ON wm.user_id = u.id
        LEFT JOIN sales_effort se ON se.user_id = wm.user_id AND se.week_start = wm.week_start
@@ -56,7 +55,8 @@ router.get('/', authenticate, async (req, res) => {
 
 // Get a specific week's meeting for a user
 router.get('/week/:weekStart', authenticate, async (req, res) => {
-  const userId = req.query.user_id && req.user.role === 'bdm' ? parseInt(req.query.user_id) : req.user.id;
+  const userId = req.query.user_id && ['bdm', 'exec_pa'].includes(req.user.role)
+    ? parseInt(req.query.user_id) : req.user.id;
   try {
     const { rows } = await pool.query(
       `SELECT wm.*, se.*
@@ -81,7 +81,7 @@ router.post('/', authenticate, async (req, res) => {
     cold_calls_target, cold_calls_actual,
     new_clients_met_target, new_clients_met_actual,
     proposals_sent_target, proposals_sent_actual,
-    existing_clients_count, potential_clients_count,
+    existing_clients_count, potential_clients_count, prospect_count,
   } = req.body;
 
   const weekStart = week_start || getWeekStart();
@@ -108,8 +108,8 @@ router.post('/', authenticate, async (req, res) => {
          cold_calls_target, cold_calls_actual,
          new_clients_met_target, new_clients_met_actual,
          proposals_sent_target, proposals_sent_actual,
-         existing_clients_count, potential_clients_count
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         existing_clients_count, potential_clients_count, prospect_count
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        ON CONFLICT (user_id, week_start) DO UPDATE SET
          cold_emails_target = EXCLUDED.cold_emails_target,
          cold_emails_actual = EXCLUDED.cold_emails_actual,
@@ -121,6 +121,7 @@ router.post('/', authenticate, async (req, res) => {
          proposals_sent_actual = EXCLUDED.proposals_sent_actual,
          existing_clients_count = EXCLUDED.existing_clients_count,
          potential_clients_count = EXCLUDED.potential_clients_count,
+         prospect_count = EXCLUDED.prospect_count,
          updated_at = NOW()
        RETURNING *`,
       [
@@ -129,7 +130,7 @@ router.post('/', authenticate, async (req, res) => {
         cold_calls_target || 0, cold_calls_actual || 0,
         new_clients_met_target || 0, new_clients_met_actual || 0,
         proposals_sent_target || 0, proposals_sent_actual || 0,
-        existing_clients_count || 0, potential_clients_count || 0,
+        existing_clients_count || 0, potential_clients_count || 0, prospect_count || 0,
       ]
     );
 

@@ -7,7 +7,7 @@ import { EVENT_TYPES } from '../utils/constants';
 const EMPTY = {
   title: '', client_name: '', project_type: EVENT_TYPES[0],
   confirmation_date: '', event_date: '', revenue: '', cost: '',
-  status: 'pending', project_google_link: '', notes: '',
+  status: 'confirmed', project_google_link: '', notes: '',
 };
 
 function CrewRow({ member, users, onUpdate, onRemove, disabledIds }) {
@@ -165,7 +165,6 @@ function ProjectModal({ project, onSave, onClose }) {
             <div>
               <label className="label">Status</label>
               <select className="input" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
-                <option value="pending">Pending</option>
                 <option value="confirmed">Confirmed</option>
                 <option value="completed">Completed</option>
                 <option value="cancelled">Cancelled</option>
@@ -174,7 +173,6 @@ function ProjectModal({ project, onSave, onClose }) {
             <div>
               <label className="label">Date of Confirmation</label>
               <input type="date" className="input" value={form.confirmation_date} onChange={e => setForm(f => ({ ...f, confirmation_date: e.target.value }))} />
-              <p className="text-xs text-gray-400 mt-0.5">Sets the GP reporting period</p>
             </div>
             <div>
               <label className="label">Event Date</label>
@@ -358,7 +356,6 @@ export default function Projects() {
         </select>
         <select className="input w-auto text-xs" value={filter.status} onChange={e => setFilter(f => ({ ...f, status: e.target.value }))}>
           <option value="">All statuses</option>
-          <option value="pending">Pending</option>
           <option value="confirmed">Confirmed</option>
           <option value="completed">Completed</option>
           <option value="cancelled">Cancelled</option>
@@ -400,7 +397,7 @@ export default function Projects() {
                         Crew: {p.crew.map(c => c.name).join(', ')}
                       </div>
                     )}
-                    {p.project_google_link && (
+                    {p.project_google_link && /^https?:\/\//i.test(p.project_google_link) && (
                       <a href={p.project_google_link} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-600 hover:underline mt-0.5 block">
                         Google Drive ↗
                       </a>
@@ -416,7 +413,9 @@ export default function Projects() {
                   <td className="py-3 px-4"><span className={`badge ${STATUS_COLORS[p.status]}`}>{p.status}</span></td>
                   {['bdm', 'exec_pa'].includes(user.role) && <td className="py-3 px-4 text-gray-500 text-xs">{p.assigned_name}</td>}
                   <td className="py-3 px-4">
-                    <button onClick={() => { setEditing(p); setShowModal(true); }} className="text-xs text-brand-600 hover:underline">Edit</button>
+                    {(['bdm', 'exec_pa'].includes(user.role) || p.assigned_to === user.id) && (
+                      <button onClick={() => { setEditing(p); setShowModal(true); }} className="text-xs text-brand-600 hover:underline">Edit</button>
+                    )}
                   </td>
                 </tr>
               ))}

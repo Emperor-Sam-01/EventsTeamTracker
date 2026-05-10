@@ -101,6 +101,10 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS contact_name VARCHAR(100);
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS contact_details VARCHAR(200);
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS estimated_revenue NUMERIC(12,2);
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS estimated_gp NUMERIC(12,2);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS google_link TEXT;
+
+-- Sales effort: separate pipeline/prospect counts
+ALTER TABLE sales_effort ADD COLUMN IF NOT EXISTS prospect_count INTEGER NOT NULL DEFAULT 0;
 
 -- GP distribution across crew members on a project
 CREATE TABLE IF NOT EXISTS project_crew (

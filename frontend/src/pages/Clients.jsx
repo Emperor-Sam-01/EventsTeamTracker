@@ -43,19 +43,25 @@ const EMPTY_CLIENT = {
   company_name:'', project_name:'', project_type:'',
   contact_name:'', contact_details:'',
   list_type:'prospect', event_date:'',
-  estimated_revenue:'', estimated_gp:'', notes:'',
+  estimated_revenue:'', estimated_gp:'', google_link:'', notes:'',
 };
 
-function getThisMonday() {
-  const d = new Date(), day = d.getDay();
-  const diff = d.getDate()-day+(day===0?-6:1);
-  return new Date(d.setDate(diff)).toISOString().split('T')[0];
+// Returns last Monday (the week being reported on)
+function getLastMonday() {
+  const d = new Date();
+  const day = d.getDay();
+  const toMonday = day === 0 ? -6 : 1 - day;
+  const thisMonday = new Date(d);
+  thisMonday.setDate(d.getDate() + toMonday);
+  const lastMonday = new Date(thisMonday);
+  lastMonday.setDate(thisMonday.getDate() - 7);
+  return lastMonday.toISOString().split('T')[0];
 }
 
 // ─── Client modal ─────────────────────────────────────────────────────────────
 function ClientModal({ client, onSave, onClose }) {
   const [form, setForm] = useState(client
-    ? { ...EMPTY_CLIENT, ...client, event_date: client.event_date?.split('T')[0]||'' }
+    ? { ...EMPTY_CLIENT, ...client, event_date: client.event_date?.split('T')[0]||'', google_link: client.google_link||'' }
     : EMPTY_CLIENT
   );
   const [saving, setSaving] = useState(false);
@@ -86,24 +92,24 @@ function ClientModal({ client, onSave, onClose }) {
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-3">
           <div>
-            <label className="label">Company Name</label>
+            <label className="label">Company Name <span className="text-red-500">*</span></label>
             <input className="input" {...f('company_name')} required />
           </div>
           <div>
-            <label className="label">Project Name</label>
-            <input className="input" placeholder="e.g. ABC Corp Annual D&D 2026" {...f('project_name')} />
+            <label className="label">Project Name <span className="text-red-500">*</span></label>
+            <input className="input" placeholder="e.g. ABC Corp Annual D&D 2026" {...f('project_name')} required />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">List Type</label>
+              <label className="label">List Type <span className="text-red-500">*</span></label>
               <select className="input" value={form.list_type} onChange={e=>setForm(p=>({...p,list_type:e.target.value}))}>
                 <option value="prospect">Prospect</option>
                 <option value="pipeline">Pipeline</option>
               </select>
             </div>
             <div>
-              <label className="label">Project Type</label>
-              <select className="input" {...f('project_type')}>
+              <label className="label">Project Type <span className="text-red-500">*</span></label>
+              <select className="input" {...f('project_type')} required>
                 <option value="">Select type...</option>
                 {EVENT_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
               </select>
@@ -111,12 +117,12 @@ function ClientModal({ client, onSave, onClose }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Contact Person Name</label>
-              <input className="input" placeholder="Full name" {...f('contact_name')} />
+              <label className="label">Contact Person Name <span className="text-red-500">*</span></label>
+              <input className="input" placeholder="Full name" {...f('contact_name')} required />
             </div>
             <div>
-              <label className="label">Contact Details</label>
-              <input className="input" placeholder="Email or phone" {...f('contact_details')} />
+              <label className="label">Contact Details <span className="text-red-500">*</span></label>
+              <input className="input" placeholder="Email or phone" {...f('contact_details')} required />
             </div>
           </div>
           <div>
@@ -125,14 +131,20 @@ function ClientModal({ client, onSave, onClose }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Estimated Revenue ($)</label>
-              <input type="number" className="input" min="0" step="0.01" {...f('estimated_revenue')} />
+              <label className="label">Estimated Revenue ($) <span className="text-red-500">*</span></label>
+              <input type="number" className="input" min="0" step="0.01" {...f('estimated_revenue')} required />
             </div>
             <div>
-              <label className="label">Estimated GP ($)</label>
-              <input type="number" className="input" min="0" step="0.01" {...f('estimated_gp')} />
+              <label className="label">Estimated Cost ($) <span className="text-red-500">*</span></label>
+              <input type="number" className="input" min="0" step="0.01" {...f('estimated_gp')} required />
             </div>
           </div>
+          {form.list_type === 'pipeline' && (
+            <div>
+              <label className="label">Project Google Drive Link / Xero Quote No.</label>
+              <input className="input" placeholder="https://drive.google.com/... or Xero quote number" {...f('google_link')} />
+            </div>
+          )}
           <div>
             <label className="label">Notes</label>
             <textarea className="input" rows={2} {...f('notes')} />
@@ -148,7 +160,51 @@ function ClientModal({ client, onSave, onClose }) {
   );
 }
 
-// ─── Convert to Project modal ─────────────────────────────────────────────────
+// ─── Convert Prospect to Pipeline modal ──────────────────────────────────────
+function ConvertToPipelineModal({ client, onSave, onClose }) {
+  const [googleLink, setGoogleLink] = useState(client.google_link || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault(); setSaving(true); setError('');
+    try {
+      await api.put(`/clients/${client.id}`, { list_type: 'pipeline', google_link: googleLink });
+      onSave();
+    } catch(err) { setError(err.response?.data?.error||'Failed to update'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+        <div className="p-5 border-b">
+          <h2 className="font-semibold text-gray-900">Move to Pipeline</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Moving <strong>{client.company_name}</strong> from Prospects to Pipeline.</p>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div>
+            <label className="label">Project Google Drive Link / Xero Quote No.</label>
+            <input
+              className="input"
+              placeholder="https://drive.google.com/... or Xero quote number"
+              value={googleLink}
+              onChange={e => setGoogleLink(e.target.value)}
+            />
+            <p className="text-xs text-gray-400 mt-1">Add the Google Drive link or Xero quote number for this pipeline project.</p>
+          </div>
+          {error && <p className="text-sm text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+          <div className="flex gap-2">
+            <button type="submit" disabled={saving} className="btn-primary flex-1">{saving?'Moving...':'Move to Pipeline'}</button>
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Convert Pipeline to Current Client modal ─────────────────────────────────
 function ConvertModal({ client, onSave, onClose }) {
   const { user } = useAuth();
   const [allUsers, setAllUsers] = useState([]);
@@ -158,20 +214,19 @@ function ConvertModal({ client, onSave, onClose }) {
     project_type: client.project_type || '',
     event_date: client.event_date?.split('T')[0] || '',
     confirmation_date: '',
-    revenue: '', cost: '',
+    revenue: client.estimated_revenue || '',
+    cost: client.estimated_gp || '',
     status: 'confirmed',
-    project_google_link: '',
-    notes: '',
+    project_google_link: client.google_link || '',
+    notes: client.notes || '',
     crew: [],
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
   useEffect(() => {
-    if (['bdm','exec_pa'].includes(user.role)) {
-      api.get('/users').then(r => setAllUsers(r.data.filter(u=>u.is_active))).catch(console.error);
-    }
-  }, [user.role]);
+    api.get('/users').then(r => setAllUsers(r.data.filter(u => u.is_active && u.role !== 'pa'))).catch(console.error);
+  }, []);
 
   const gp = (parseFloat(form.revenue)||0) - (parseFloat(form.cost)||0);
   const allocatedGP = form.crew.reduce((s,c)=>s+parseFloat(c.gp_allocated||0),0);
@@ -185,15 +240,16 @@ function ConvertModal({ client, onSave, onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault(); setSaving(true); setError('');
     try {
+      const validCrew = form.crew.filter(c=>c.user_id);
       const payload = {
         ...form,
         revenue: parseFloat(form.revenue),
         cost:    parseFloat(form.cost),
-        crew: form.crew.filter(c=>c.user_id).map(c=>({
+        crew: validCrew.length > 0 ? validCrew.map(c=>({
           user_id: parseInt(c.user_id),
           gp_allocated: parseFloat(c.gp_allocated)||0,
           is_lead: c.is_lead,
-        })),
+        })) : [],
       };
       await api.post('/projects', payload);
       await api.put(`/clients/${client.id}`, { list_type: 'current' });
@@ -209,7 +265,7 @@ function ConvertModal({ client, onSave, onClose }) {
       <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto">
         <div className="p-5 border-b">
           <h2 className="font-semibold text-gray-900">Convert to Current Client</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Fill in project details to move <strong>{client.company_name}</strong> to Current Clients.</p>
+          <p className="text-xs text-gray-500 mt-0.5">Confirm project details to move <strong>{client.company_name}</strong> to Current Clients.</p>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-3">
           <div>
@@ -228,7 +284,7 @@ function ConvertModal({ client, onSave, onClose }) {
               <label className="label">Status</label>
               <select className="input" value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))}>
                 <option value="confirmed">Confirmed</option>
-                <option value="pending">Pending</option>
+                <option value="completed">Completed</option>
               </select>
             </div>
           </div>
@@ -261,7 +317,7 @@ function ConvertModal({ client, onSave, onClose }) {
           <div className="border border-gray-200 rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <div className="text-sm font-semibold text-gray-800">GP Distribution</div>
+                <div className="text-sm font-semibold text-gray-800">GP Distribution — if any</div>
                 <div className="text-xs text-gray-400">You are the Project Lead. Optionally split GP with Event Crew.</div>
               </div>
               <button type="button" onClick={addCrewMember} className="text-xs text-brand-600 hover:underline">+ Add Crew</button>
@@ -276,11 +332,11 @@ function ConvertModal({ client, onSave, onClose }) {
                   >
                     <option value="">Select member...</option>
                     {allUsers.filter(u=>u.id!==user.id).map(u=>(
-                      <option key={u.id} value={u.id}>{u.name}</option>
+                      <option key={u.id} value={u.id}>{u.name} ({u.role.toUpperCase()})</option>
                     ))}
                   </select>
                   <input
-                    type="number" min="0" step="0.01"
+                    type="text" inputMode="numeric"
                     placeholder="GP $"
                     className="input w-28 text-xs"
                     value={member.gp_allocated}
@@ -299,8 +355,8 @@ function ConvertModal({ client, onSave, onClose }) {
           </div>
 
           <div>
-            <label className="label">Project Google Drive Link</label>
-            <input type="url" className="input" placeholder="https://drive.google.com/..." {...f('project_google_link')} />
+            <label className="label">Project Google Drive Link / Xero Quote No.</label>
+            <input className="input" placeholder="https://drive.google.com/... or Xero quote number" {...f('project_google_link')} />
           </div>
           <div>
             <label className="label">Notes</label>
@@ -320,7 +376,7 @@ function ConvertModal({ client, onSave, onClose }) {
 // ─── Weekly meeting section ───────────────────────────────────────────────────
 function WeeklyMeetingSection({ clientCounts }) {
   const { user } = useAuth();
-  const weekStart = getThisMonday();
+  const weekStart = getLastMonday();
   const [dashData, setDashData] = useState(null);
   const [form, setForm] = useState({ action_items:'', cold_emails_actual:'', cold_calls_actual:'', new_clients_met_actual:'', proposals_sent_actual:'' });
   const [history, setHistory] = useState([]);
@@ -332,7 +388,13 @@ function WeeklyMeetingSection({ clientCounts }) {
     api.get(`/dashboard/individual/${user.id}`).then(r=>setDashData(r.data)).catch(console.error);
     api.get(`/meetings/week/${weekStart}`).then(r=>{
       const d=r.data;
-      setForm(f=>({...f, action_items:d.action_items||'', cold_emails_actual:d.cold_emails_actual??'', cold_calls_actual:d.cold_calls_actual??'', new_clients_met_actual:d.new_clients_met_actual??'', proposals_sent_actual:d.proposals_sent_actual??''}));
+      setForm(f=>({...f,
+        action_items: d.action_items||'',
+        cold_emails_actual: d.cold_emails_actual??'',
+        cold_calls_actual: d.cold_calls_actual??'',
+        new_clients_met_actual: d.new_clients_met_actual??'',
+        proposals_sent_actual: d.proposals_sent_actual??'',
+      }));
     }).catch(()=>{});
     api.get('/meetings?limit=8').then(r=>setHistory(r.data)).catch(console.error);
   }, [user.id, weekStart]);
@@ -347,12 +409,13 @@ function WeeklyMeetingSection({ clientCounts }) {
     try {
       await api.post('/meetings', {
         week_start: weekStart, action_items: form.action_items,
-        cold_emails_target: targets?.cold_emails||0,     cold_emails_actual: parseInt(form.cold_emails_actual)||0,
-        cold_calls_target: targets?.cold_calls||0,       cold_calls_actual: parseInt(form.cold_calls_actual)||0,
+        cold_emails_target: targets?.cold_emails||0,       cold_emails_actual: parseInt(form.cold_emails_actual)||0,
+        cold_calls_target: targets?.cold_calls||0,         cold_calls_actual: parseInt(form.cold_calls_actual)||0,
         new_clients_met_target: targets?.new_clients_met||0, new_clients_met_actual: parseInt(form.new_clients_met_actual)||0,
         proposals_sent_target: targets?.proposals_sent||0,   proposals_sent_actual: parseInt(form.proposals_sent_actual)||0,
         existing_clients_count: clientCounts.current,
-        potential_clients_count: clientCounts.pipeline+clientCounts.prospect,
+        potential_clients_count: clientCounts.pipeline,
+        prospect_count: clientCounts.prospect,
       });
       setSuccess(true);
       api.get('/meetings?limit=8').then(r=>setHistory(r.data)).catch(console.error);
@@ -379,24 +442,36 @@ function WeeklyMeetingSection({ clientCounts }) {
           </div>
         </div>
         <div className="w-28">
-          <input type="number" min="0" className="input text-sm text-center" placeholder="Actual" {...f(actualKey)} />
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            className="input text-sm text-center"
+            placeholder="Actual"
+            {...f(actualKey)}
+          />
         </div>
       </div>
     );
   };
 
+  const formatWeekDate = (dateStr) =>
+    new Date(dateStr).toLocaleDateString('en-SG',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+
   return (
     <div className="space-y-5">
       <div>
         <h2 className="text-base font-semibold text-gray-900">Weekly Meeting</h2>
-        <p className="text-xs text-gray-500 mt-0.5">Week of {new Date(weekStart).toLocaleDateString('en-SG',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>
+        <p className="text-xs text-gray-500 mt-0.5">
+          Reporting actuals for week of {formatWeekDate(weekStart)}
+        </p>
       </div>
       {hasNoTargets ? (
         <div className="card text-sm text-gray-500 text-center py-6">Weekly effort tracking is for BD and Project team members.</div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="card">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Current Client Load (from your lists)</h3>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Client Load This Week</h3>
             <div className="grid grid-cols-3 gap-3 text-center">
               {[{label:'Current',val:clientCounts.current,color:'text-teal-700'},{label:'Pipeline',val:clientCounts.pipeline,color:'text-brand-600'},{label:'Prospects',val:clientCounts.prospect,color:'text-purple-700'}].map(c=>(
                 <div key={c.label}><div className={`text-2xl font-bold ${c.color}`}>{c.val}</div><div className="text-xs text-gray-500">{c.label}</div></div>
@@ -409,8 +484,8 @@ function WeeklyMeetingSection({ clientCounts }) {
             )}
           </div>
           <div className="card">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Sales Effort — Last Week Actuals</h3>
-            <p className="text-xs text-gray-400 mb-3">Targets are auto-set. Enter what you actually achieved last week.</p>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Sales Effort — Actuals</h3>
+            <p className="text-xs text-gray-400 mb-3">Enter what you achieved for the week of {formatWeekDate(weekStart)}.</p>
             {!targets ? <div className="text-xs text-gray-400">Loading targets...</div> : (
               <div>
                 <MetricRow label="Cold Emails"     targetVal={targets.cold_emails}     actualKey="cold_emails_actual" />
@@ -421,28 +496,80 @@ function WeeklyMeetingSection({ clientCounts }) {
             )}
           </div>
           <div className="card">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">This Week's Action Items</h3>
-            <textarea className="input" rows={5} placeholder={"e.g.\n- Meet ABC Corp on Tuesday\n- Send proposal to XYZ by Wednesday\n- Follow up with 3 pipeline clients"} {...f('action_items')} />
+            <h3 className="text-sm font-semibold text-gray-800 mb-2">This Week's Action Items</h3>
+            <p className="text-xs text-gray-400 mb-2">What are your key actions and commitments for the coming week?</p>
+            <textarea
+              className="input"
+              rows={6}
+              placeholder={"e.g.\n- Meet ABC Corp on Tuesday to discuss event brief\n- Send proposal to XYZ by Wednesday\n- Follow up with 3 pipeline clients\n- Cold call 20 new F&B companies"}
+              {...f('action_items')}
+            />
           </div>
           {error   && <div className="text-sm text-red-600 bg-red-50 rounded-lg px-4 py-2">{error}</div>}
-          {success && <div className="text-sm text-green-700 bg-green-50 rounded-lg px-4 py-2">Meeting data saved!</div>}
+          {success && <div className="text-sm text-green-700 bg-green-50 rounded-lg px-4 py-2">Meeting data saved successfully!</div>}
           <button type="submit" disabled={saving} className="btn-primary w-full">{saving?'Saving...':'Submit Weekly Meeting Data'}</button>
         </form>
       )}
+
       {history.length > 0 && (
         <div className="card">
           <h3 className="text-sm font-semibold text-gray-800 mb-3">Past Submissions</h3>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {history.map(m=>(
-              <div key={m.id} className="border border-gray-100 rounded-lg p-3 text-xs">
-                <div className="font-semibold text-gray-700 mb-1">Week of {new Date(m.week_start).toLocaleDateString('en-SG')}</div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-gray-600">
-                  {[{l:'Emails',a:m.cold_emails_actual,t:m.cold_emails_target},!isPE&&{l:'Calls',a:m.cold_calls_actual,t:m.cold_calls_target},{l:'Proposals',a:m.proposals_sent_actual,t:m.proposals_sent_target},!isPE&&{l:'New Met',a:m.new_clients_met_actual,t:m.new_clients_met_target}].filter(Boolean).map(item=>(
-                    <div key={item.l}><span className="text-gray-400">{item.l}: </span><span className={item.a>=item.t?'text-green-600 font-medium':'text-red-500 font-medium'}>{item.a}/{item.t}</span></div>
-                  ))}
+              <details key={m.id} className="border border-gray-100 rounded-xl overflow-hidden">
+                <summary className="flex items-center justify-between px-4 py-3 cursor-pointer bg-gray-50 hover:bg-gray-100 list-none">
+                  <div>
+                    <span className="text-sm font-medium text-gray-800">
+                      Week of {new Date(m.week_start).toLocaleDateString('en-SG',{day:'numeric',month:'short',year:'numeric'})}
+                    </span>
+                  </div>
+                  <span className="text-xs text-gray-400">▼</span>
+                </summary>
+                <div className="px-4 pb-4 pt-3 space-y-3">
+                  {/* Sales effort metrics */}
+                  <div>
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Sales Effort</div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {[
+                        {l:'Cold Emails',a:m.cold_emails_actual,t:m.cold_emails_target},
+                        !isPE&&{l:'Cold Calls',a:m.cold_calls_actual,t:m.cold_calls_target},
+                        {l:'Proposals',a:m.proposals_sent_actual,t:m.proposals_sent_target},
+                        !isPE&&{l:'New Clients Met',a:m.new_clients_met_actual,t:m.new_clients_met_target},
+                      ].filter(Boolean).map(item=>(
+                        <div key={item.l} className="bg-gray-50 rounded-lg p-2 text-center">
+                          <div className={`text-base font-bold ${item.a>=item.t?'text-green-600':'text-red-500'}`}>{item.a}<span className="text-xs text-gray-400">/{item.t}</span></div>
+                          <div className="text-xs text-gray-500 mt-0.5">{item.l}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Client breakdown */}
+                  <div>
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Client Pipeline</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="bg-teal-50 rounded-lg p-2 text-center">
+                        <div className="text-base font-bold text-teal-700">{m.existing_clients_count||0}</div>
+                        <div className="text-xs text-gray-500">Current</div>
+                      </div>
+                      <div className="bg-brand-50 rounded-lg p-2 text-center">
+                        <div className="text-base font-bold text-brand-600">{m.potential_clients_count||0}</div>
+                        <div className="text-xs text-gray-500">Pipeline</div>
+                      </div>
+                      <div className="bg-purple-50 rounded-lg p-2 text-center">
+                        <div className="text-base font-bold text-purple-700">{m.prospect_count||0}</div>
+                        <div className="text-xs text-gray-500">Prospects</div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Action items */}
+                  {m.action_items && (
+                    <div>
+                      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Action Items</div>
+                      <div className="bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap">{m.action_items}</div>
+                    </div>
+                  )}
                 </div>
-                {m.action_items && <div className="text-gray-400 mt-1 italic line-clamp-1">{m.action_items}</div>}
-              </div>
+              </details>
             ))}
           </div>
         </div>
@@ -457,11 +584,12 @@ export default function Clients() {
   const [tab, setTab]           = useState('clients');
   const [clients, setClients]   = useState([]);
   const [loading, setLoading]   = useState(true);
-  const [showModal, setShowModal]       = useState(false);
-  const [showConvert, setShowConvert]   = useState(false);
-  const [editing, setEditing]           = useState(null);
-  const [converting, setConverting]     = useState(null);
-  const [listFilter, setListFilter]     = useState('');
+  const [showModal, setShowModal]             = useState(false);
+  const [showConvert, setShowConvert]         = useState(false);
+  const [showConvertPipeline, setShowConvertPipeline] = useState(false);
+  const [editing, setEditing]                 = useState(null);
+  const [converting, setConverting]           = useState(null);
+  const [listFilter, setListFilter]           = useState('');
 
   const load = useCallback(() => {
     setLoading(true);
@@ -533,8 +661,13 @@ export default function Clients() {
                             {c.project_type && <div className="text-xs text-gray-400">{c.project_type}</div>}
                           </div>
                           <div className="flex gap-1 shrink-0">
-                            <button onClick={()=>{setEditing(c);setShowModal(true);}} className="text-xs text-brand-600 hover:underline">Edit</button>
-                            <span className="text-gray-300">·</span>
+                            {/* Current clients are read-only — edit in Projects tab */}
+                            {type !== 'current' && (
+                              <>
+                                <button onClick={()=>{setEditing(c);setShowModal(true);}} className="text-xs text-brand-600 hover:underline">Edit</button>
+                                <span className="text-gray-300">·</span>
+                              </>
+                            )}
                             <button onClick={()=>remove(c.id)} className="text-xs text-red-500 hover:underline">✕</button>
                           </div>
                         </div>
@@ -543,21 +676,41 @@ export default function Clients() {
                         {(c.estimated_revenue||c.estimated_gp) && (
                           <div className="text-xs mt-0.5">
                             {c.estimated_revenue && <span className="text-gray-500">Rev: {formatCurrency(c.estimated_revenue)} </span>}
-                            {c.estimated_gp && <span className="text-green-700">GP: {formatCurrency(c.estimated_gp)}</span>}
+                            {c.estimated_gp && <span className="text-gray-600">Cost: {formatCurrency(c.estimated_gp)}</span>}
+                          </div>
+                        )}
+                        {c.google_link && (
+                          <div className="text-xs mt-0.5">
+                            {/^https?:\/\//i.test(c.google_link)
+                              ? <a href={c.google_link} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">📎 Drive Link ↗</a>
+                              : <span className="text-gray-500">📎 {c.google_link}</span>
+                            }
                           </div>
                         )}
                         {c.notes && <div className="text-xs text-gray-400 mt-1 italic line-clamp-2">{c.notes}</div>}
                         {['bdm','exec_pa'].includes(user.role) && c.member_name && (
                           <div className="text-xs text-brand-600 mt-1 font-medium">{c.member_name}</div>
                         )}
-                        {/* Convert button for non-current clients */}
-                        {type!=='current' && (
+                        {/* Prospect: Convert to Pipeline */}
+                        {type === 'prospect' && (
+                          <button
+                            onClick={()=>{setConverting(c);setShowConvertPipeline(true);}}
+                            className="mt-2 w-full text-xs bg-purple-600 hover:bg-purple-700 text-white rounded-md py-1.5 font-medium transition-colors"
+                          >
+                            → Move to Pipeline
+                          </button>
+                        )}
+                        {/* Pipeline: Convert to Current Client */}
+                        {type === 'pipeline' && (
                           <button
                             onClick={()=>{setConverting(c);setShowConvert(true);}}
                             className="mt-2 w-full text-xs bg-brand-600 hover:bg-brand-700 text-white rounded-md py-1.5 font-medium transition-colors"
                           >
                             ✓ Convert to Current Client
                           </button>
+                        )}
+                        {type === 'current' && (
+                          <div className="mt-2 text-xs text-gray-400 text-center italic">Manage in Projects tab</div>
                         )}
                       </div>
                     ))}
@@ -576,6 +729,9 @@ export default function Clients() {
       )}
       {showConvert && converting && (
         <ConvertModal client={converting} onSave={()=>{setShowConvert(false);setConverting(null);load();}} onClose={()=>{setShowConvert(false);setConverting(null);}} />
+      )}
+      {showConvertPipeline && converting && (
+        <ConvertToPipelineModal client={converting} onSave={()=>{setShowConvertPipeline(false);setConverting(null);load();}} onClose={()=>{setShowConvertPipeline(false);setConverting(null);}} />
       )}
     </div>
   );

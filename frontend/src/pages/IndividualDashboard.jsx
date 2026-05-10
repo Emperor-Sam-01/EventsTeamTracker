@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, LineChart, Line, CartesianGrid, Legend } from 'recharts';
+import {
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  CartesianGrid, Legend, ReferenceLine, BarChart, Bar,
+} from 'recharts';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, ROLE_LABELS, TIER_COLORS, monthName, getMonthYear } from '../utils/format';
@@ -15,6 +18,25 @@ function ProgressBar({ value, max, color = 'bg-brand-500' }) {
   );
 }
 
+// Flip card: click to toggle between two views
+function FlipCard({ labelA, valueA, subA, colorA, labelB, valueB, subB, colorB }) {
+  const [flipped, setFlipped] = useState(false);
+  const label = flipped ? labelB : labelA;
+  const value = flipped ? valueB : valueA;
+  const sub   = flipped ? subB   : subA;
+  const color = flipped ? colorB : colorA;
+  return (
+    <div className="card cursor-pointer select-none group relative" onClick={() => setFlipped(f => !f)} title="Click to toggle view">
+      <div className="text-xs text-gray-500 font-medium uppercase tracking-wide flex items-center gap-1">
+        {label}
+        <span className="text-gray-300 group-hover:text-brand-400 transition-colors text-xs">⇄</span>
+      </div>
+      <div className={`text-2xl font-bold mt-1 ${color || 'text-gray-900'}`}>{value}</div>
+      {sub && <div className="text-xs text-gray-500 mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
 function StatCard({ label, value, sub, color }) {
   return (
     <div className="card">
@@ -25,21 +47,52 @@ function StatCard({ label, value, sub, color }) {
   );
 }
 
+// Compute simple linear projection from last N data points
+function computeProjection(historicalGP, futureCount) {
+  const valid = historicalGP.filter(v => v != null && v > 0);
+  if (valid.length === 0) return Array(futureCount).fill(0);
+  const recent = valid.slice(-3);
+  const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
+  // Simple linear trend from last 2 points
+  if (recent.length >= 2) {
+    const trend = (recent[recent.length - 1] - recent[0]) / (recent.length - 1);
+    return Array.from({ length: futureCount }, (_, i) =>
+      Math.max(0, avg + trend * (i + 1))
+    );
+  }
+  return Array(futureCount).fill(avg);
+}
+
 export default function IndividualDashboard() {
   const { user } = useAuth();
   const [data, setData] = useState(null);
   const [benchmarks, setBenchmarks] = useState(null);
+  const [benchmarkTrend, setBenchmarkTrend] = useState([]);
   const [loading, setLoading] = useState(true);
   const { month, year } = getMonthYear();
   const [period, setPeriod] = useState({ month, year });
+
+  // Editable display name stored in localStorage
+  const storageKey = `dashboard_name_${user.id}`;
+  const [displayName, setDisplayName] = useState(() => localStorage.getItem(storageKey) || user.name);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(displayName);
+
+  // Toggle lines on GP trend chart
+  const [showLines, setShowLines] = useState({ avg: true, best: false, worst: false });
 
   useEffect(() => {
     setLoading(true);
     Promise.all([
       api.get(`/dashboard/individual/${user.id}?month=${period.month}&year=${period.year}`),
       api.get(`/dashboard/benchmarks?month=${period.month}&year=${period.year}`),
+      api.get(`/dashboard/benchmarks-trend?month=${period.month}&year=${period.year}`),
     ])
-      .then(([d, b]) => { setData(d.data); setBenchmarks(b.data); })
+      .then(([d, b, bt]) => {
+        setData(d.data);
+        setBenchmarks(b.data);
+        setBenchmarkTrend(bt.data);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [user.id, period]);
@@ -48,9 +101,9 @@ export default function IndividualDashboard() {
   if (!data) return <div className="text-red-500">Failed to load dashboard.</div>;
 
   const { gp, clients, sales_effort, gp_trend } = data;
-  const gpTarget = gp.targets ? (data.user.role === 'pe' ? gp.targets.t1 * data.user.multiplier : gp.targets.t1 * data.user.multiplier) : 0;
-  const gpDisplay = data.user.role === 'pe' ? gp.quarterly : gp.monthly;
-  const gpLabel = data.user.role === 'pe' ? 'Quarterly GP' : 'Monthly GP';
+  const isPE = ['pe', 'spe'].includes(data.user.role);
+  const gpTarget = gp.targets ? gp.targets.t1 * data.user.multiplier : 0;
+  const yearlyGP = gp.yearly || 0;
 
   const effortHistory = (sales_effort.history || []).map(e => ({
     week: e.week_start?.slice(5),
@@ -62,23 +115,84 @@ export default function IndividualDashboard() {
 
   const effortItems = [
     { key: 'cold_emails', label: 'Cold Emails', actual: sales_effort.latest?.cold_emails_actual ?? 0, target: sales_effort.targets?.cold_emails, color: 'bg-blue-500' },
-    { key: 'cold_calls', label: 'Cold Calls', actual: sales_effort.latest?.cold_calls_actual ?? 0, target: sales_effort.targets?.cold_calls, color: 'bg-indigo-500', hide: data.user.role === 'pe' },
+    { key: 'cold_calls', label: 'Cold Calls', actual: sales_effort.latest?.cold_calls_actual ?? 0, target: sales_effort.targets?.cold_calls, color: 'bg-indigo-500', hide: isPE },
     { key: 'proposals_sent', label: 'Proposals Sent', actual: sales_effort.latest?.proposals_sent_actual ?? 0, target: sales_effort.targets?.proposals_sent, color: 'bg-teal-500' },
-    { key: 'new_clients_met', label: 'New Clients Met', actual: sales_effort.latest?.new_clients_met_actual ?? 0, target: sales_effort.targets?.new_clients_met, color: 'bg-purple-500', hide: data.user.role === 'pe' },
+    { key: 'new_clients_met', label: 'New Clients Met', actual: sales_effort.latest?.new_clients_met_actual ?? 0, target: sales_effort.targets?.new_clients_met, color: 'bg-purple-500', hide: isPE },
   ].filter(i => !i.hide);
 
-  const gpTrendData = (gp_trend || []).map(t => ({
+  // Build 12-month chart data: 6 history + 6 projection
+  const historyMonths = (gp_trend || []).map(t => ({
     name: monthName(parseInt(t.month.split('-')[1])),
+    monthKey: t.month,
     gp: parseFloat(t.gp),
-    target: gpTarget,
   }));
+
+  const projectedValues = computeProjection(historyMonths.map(h => h.gp), 6);
+  const lastHistoryMonth = historyMonths[historyMonths.length - 1];
+
+  const futureMonths = Array.from({ length: 6 }, (_, i) => {
+    const base = lastHistoryMonth?.monthKey || `${period.year}-${String(period.month).padStart(2,'0')}`;
+    const [y, m] = base.split('-').map(Number);
+    const d = new Date(y, m - 1 + i + 1, 1);
+    return {
+      name: monthName(d.getMonth() + 1),
+      monthKey: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,
+      projection: projectedValues[i],
+    };
+  });
+
+  // Merge benchmark trend into chart data
+  const trendMap = {};
+  benchmarkTrend.forEach(b => { trendMap[b.month] = b; });
+
+  const chartData = [
+    ...historyMonths.map(h => ({
+      ...h,
+      projection: null,
+      team_avg:   trendMap[h.monthKey]?.avg_gp ?? null,
+      team_best:  trendMap[h.monthKey]?.best_gp ?? null,
+      team_worst: trendMap[h.monthKey]?.worst_gp ?? null,
+    })),
+    ...futureMonths.map(f => ({
+      ...f,
+      gp: null,
+      team_avg: null, team_best: null, team_worst: null,
+    })),
+  ];
+
+  const saveName = () => {
+    const trimmed = nameDraft.trim() || user.name;
+    setDisplayName(trimmed);
+    localStorage.setItem(storageKey, trimmed);
+    setEditingName(false);
+  };
+
+  const toggleLine = (key) => setShowLines(s => ({ ...s, [key]: !s[key] }));
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">My Dashboard</h1>
-          <p className="text-sm text-gray-500">{ROLE_LABELS[data.user.role]} · Tenure: {data.user.tenure_months} months{data.user.multiplier < 1 ? ` · ${Math.round(data.user.multiplier * 100)}% target multiplier` : ''}</p>
+          {editingName ? (
+            <div className="flex items-center gap-2">
+              <input
+                className="input text-xl font-bold py-1 px-2 w-56"
+                value={nameDraft}
+                onChange={e => setNameDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditingName(false); }}
+                autoFocus
+              />
+              <button onClick={saveName} className="btn-primary text-xs px-3 py-1">Save</button>
+              <button onClick={() => setEditingName(false)} className="btn-secondary text-xs px-3 py-1">Cancel</button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold text-gray-900">{displayName}'s Dashboard</h1>
+              <button onClick={() => { setNameDraft(displayName); setEditingName(true); }} className="text-gray-400 hover:text-brand-600 text-sm" title="Edit name">✎</button>
+            </div>
+          )}
+          <p className="text-sm text-gray-500 mt-0.5">{ROLE_LABELS[data.user.role]}{data.user.multiplier < 1 ? ` · ${Math.round(data.user.multiplier * 100)}% target multiplier` : ''}</p>
         </div>
         <div className="flex items-center gap-2">
           <select className="input w-auto text-xs" value={period.month} onChange={e => setPeriod(p => ({ ...p, month: parseInt(e.target.value) }))}>
@@ -92,12 +206,29 @@ export default function IndividualDashboard() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          label={gpLabel}
-          value={formatCurrency(gpDisplay)}
-          sub={`${TIER_LABEL[gp.tier]} · Target: ${formatCurrency(gpTarget)}`}
-          color={TIER_COLORS[gp.tier]}
-        />
+        {isPE ? (
+          <FlipCard
+            labelA="Quarterly GP"
+            valueA={formatCurrency(gp.quarterly)}
+            subA={`${TIER_LABEL[gp.tier]} · Target: ${formatCurrency(gpTarget)}`}
+            colorA={TIER_COLORS[gp.tier]}
+            labelB="Yearly GP"
+            valueB={formatCurrency(yearlyGP)}
+            subB={`Full year ${period.year}`}
+            colorB="text-gray-900"
+          />
+        ) : (
+          <FlipCard
+            labelA="Monthly GP"
+            valueA={formatCurrency(gp.monthly)}
+            subA={`${TIER_LABEL[gp.tier]} · Target: ${formatCurrency(gpTarget)}`}
+            colorA={TIER_COLORS[gp.tier]}
+            labelB="Yearly GP"
+            valueB={formatCurrency(yearlyGP)}
+            subB={`Full year ${period.year}`}
+            colorB="text-gray-900"
+          />
+        )}
         {['bdm', 'exec_pa'].includes(user.role) && (
           <StatCard label="Net Profit (You)" value={formatCurrency(gp.np)} sub="GP minus salary & costs" color={gp.np >= 0 ? 'text-green-600' : 'text-red-600'} />
         )}
@@ -135,18 +266,45 @@ export default function IndividualDashboard() {
         </div>
       )}
 
-      {/* GP Trend */}
+      {/* GP Trend + Projection */}
       <div className="card">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">GP Trend (Last 6 Months)</h2>
-        <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={gpTrendData}>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-gray-700">GP Trend — 6 Month History + 6 Month Projection</h2>
+        </div>
+        {/* Line toggles */}
+        <div className="flex flex-wrap gap-3 mb-4">
+          {[
+            { key: 'avg',   label: 'Team Avg',    color: '#3b82f6' },
+            { key: 'best',  label: 'Team Best',   color: '#22c55e' },
+            { key: 'worst', label: 'Team Lowest', color: '#ef4444' },
+          ].map(line => (
+            <label key={line.key} className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showLines[line.key]}
+                onChange={() => toggleLine(line.key)}
+                className="rounded"
+              />
+              <span className="text-xs text-gray-600 flex items-center gap-1">
+                <span className="inline-block w-4 h-0.5 rounded" style={{ backgroundColor: line.color }} />
+                {line.label}
+              </span>
+            </label>
+          ))}
+        </div>
+        <ResponsiveContainer width="100%" height={260}>
+          <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
             <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
-            <Tooltip formatter={(v) => formatCurrency(v)} />
+            <Tooltip formatter={(v, name) => [formatCurrency(v), name]} />
             <Legend />
-            <ReferenceLine y={gpTarget} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Target', fontSize: 11, fill: '#f59e0b' }} />
-            <Line type="monotone" dataKey="gp" stroke="#0ea5e9" strokeWidth={2} dot={{ r: 4 }} name="Your GP" />
+            <ReferenceLine y={gpTarget} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Target', fontSize: 10, fill: '#f59e0b' }} />
+            <Line type="monotone" dataKey="gp" stroke="#f97316" strokeWidth={2.5} dot={{ r: 4 }} name="Your GP" connectNulls={false} />
+            <Line type="monotone" dataKey="projection" stroke="#f97316" strokeWidth={2} strokeDasharray="5 4" dot={{ r: 3 }} name="Projection" connectNulls={false} />
+            {showLines.avg   && <Line type="monotone" dataKey="team_avg"   stroke="#3b82f6" strokeWidth={1.5} dot={false} name="Team Avg"    connectNulls={false} />}
+            {showLines.best  && <Line type="monotone" dataKey="team_best"  stroke="#22c55e" strokeWidth={1.5} dot={false} name="Team Best"   connectNulls={false} />}
+            {showLines.worst && <Line type="monotone" dataKey="team_worst" stroke="#ef4444" strokeWidth={1.5} dot={false} name="Team Lowest" connectNulls={false} />}
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -166,7 +324,7 @@ export default function IndividualDashboard() {
               </div>
             ))}
           </div>
-          {!sales_effort.latest && <p className="text-xs text-gray-400 mt-2">No data submitted yet for current week.</p>}
+          {!sales_effort.latest && <p className="text-xs text-gray-400 mt-2">No data submitted yet.</p>}
         </div>
 
         <div className="card">
@@ -176,8 +334,8 @@ export default function IndividualDashboard() {
               <XAxis dataKey="week" tick={{ fontSize: 10 }} />
               <YAxis tick={{ fontSize: 10 }} />
               <Tooltip />
-              <Bar dataKey="emails" fill="#0ea5e9" name="Emails" />
-              {data.user.role !== 'pe' && <Bar dataKey="calls" fill="#6366f1" name="Calls" />}
+              <Bar dataKey="emails" fill="#f97316" name="Emails" />
+              {!isPE && <Bar dataKey="calls" fill="#6366f1" name="Calls" />}
               <Bar dataKey="proposals" fill="#14b8a6" name="Proposals" />
             </BarChart>
           </ResponsiveContainer>

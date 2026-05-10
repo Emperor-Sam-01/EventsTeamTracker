@@ -44,6 +44,11 @@ router.get('/individual/:userId', authenticate, async (req, res) => {
       .filter(p => p.period_month === m && p.period_year === y)
       .reduce((sum, p) => sum + parseFloat(p.gp || 0), 0);
 
+    // Yearly GP (full calendar year)
+    const yearlyGP = projectRows
+      .filter(p => p.period_year === y)
+      .reduce((sum, p) => sum + parseFloat(p.gp || 0), 0);
+
     // Quarterly GP (current quarter)
     const quarterStart = Math.floor((m - 1) / 3) * 3 + 1;
     const quarterMonths = [quarterStart, quarterStart + 1, quarterStart + 2];
@@ -107,6 +112,7 @@ router.get('/individual/:userId', authenticate, async (req, res) => {
       gp: {
         monthly: monthlyGP,
         quarterly: quarterlyGP,
+        yearly: yearlyGP,
         tier,
         np,
         targets: GP_TARGETS[user.role] || null,
@@ -278,6 +284,63 @@ router.get('/benchmarks', authenticate, async (req, res) => {
       period: { month: m, year: y },
     });
   } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// 12-month team GP benchmark trend for chart lines
+router.get('/benchmarks-trend', authenticate, async (req, res) => {
+  const { month, year } = req.query;
+  const now = new Date();
+  const m = parseInt(month) || now.getMonth() + 1;
+  const y = parseInt(year) || now.getFullYear();
+
+  const months = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(y, m - 1 - i, 1);
+    months.push({ month: d.getMonth() + 1, year: d.getFullYear() });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `WITH crew_gp AS (
+        SELECT assigned_to AS user_id, gp, period_month, period_year FROM projects
+        WHERE status IN ('confirmed','completed')
+          AND NOT EXISTS (SELECT 1 FROM project_crew WHERE project_id = id)
+        UNION ALL
+        SELECT pc.user_id, pc.gp_allocated AS gp, p.period_month, p.period_year
+        FROM project_crew pc JOIN projects p ON p.id = pc.project_id
+        WHERE p.status IN ('confirmed','completed')
+      ),
+      user_monthly AS (
+        SELECT cg.user_id, cg.period_year, cg.period_month, SUM(cg.gp) AS monthly_gp
+        FROM crew_gp cg
+        JOIN users u ON u.id = cg.user_id
+        WHERE u.is_active = TRUE AND u.role NOT IN ('bdm', 'exec_pa')
+        GROUP BY cg.user_id, cg.period_year, cg.period_month
+      )
+      SELECT period_year, period_month,
+        AVG(monthly_gp) AS avg_gp,
+        MAX(monthly_gp) AS best_gp,
+        MIN(monthly_gp) AS worst_gp
+      FROM user_monthly
+      GROUP BY period_year, period_month
+      ORDER BY period_year, period_month`
+    );
+
+    const result = months.map(({ month: mm, year: yy }) => {
+      const found = rows.find(r => parseInt(r.period_month) === mm && parseInt(r.period_year) === yy);
+      return {
+        month: `${yy}-${String(mm).padStart(2, '0')}`,
+        avg_gp: found ? parseFloat(found.avg_gp) : null,
+        best_gp: found ? parseFloat(found.best_gp) : null,
+        worst_gp: found ? parseFloat(found.worst_gp) : null,
+      };
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
 });
