@@ -2,36 +2,127 @@ import React, { useEffect, useState } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, STATUS_COLORS, getMonthYear, monthName } from '../utils/format';
+import { EVENT_TYPES } from '../utils/constants';
 
 const EMPTY = {
-  title: '', client_name: '', project_type: 'events',
+  title: '', client_name: '', project_type: EVENT_TYPES[0],
   confirmation_date: '', event_date: '', revenue: '', cost: '',
-  status: 'pending', notes: '',
+  status: 'pending', project_google_link: '', notes: '',
 };
+
+function CrewRow({ member, users, onUpdate, onRemove, disabledIds }) {
+  return (
+    <div className="flex items-center gap-2">
+      <select
+        className="input flex-1 text-sm"
+        value={member.user_id || ''}
+        onChange={e => onUpdate({ ...member, user_id: parseInt(e.target.value) })}
+      >
+        <option value="">Select member...</option>
+        {users.map(u => (
+          <option key={u.id} value={u.id} disabled={disabledIds.includes(u.id) && u.id !== member.user_id}>
+            {u.name} ({u.role.toUpperCase()})
+          </option>
+        ))}
+      </select>
+      <div className="flex items-center gap-1">
+        <span className="text-xs text-gray-500">GP $</span>
+        <input
+          type="number"
+          className="input w-28 text-sm"
+          placeholder="0"
+          min="0"
+          step="0.01"
+          value={member.gp_allocated || ''}
+          onChange={e => onUpdate({ ...member, gp_allocated: e.target.value })}
+        />
+      </div>
+      <button type="button" onClick={onRemove} className="text-gray-400 hover:text-red-500 px-1">✕</button>
+    </div>
+  );
+}
 
 function ProjectModal({ project, onSave, onClose }) {
   const { user } = useAuth();
+  const isBDM = ['bdm', 'exec_pa'].includes(user.role);
+
   const [form, setForm] = useState(project ? {
     ...project,
     confirmation_date: project.confirmation_date?.split('T')[0] || '',
     event_date: project.event_date?.split('T')[0] || '',
+    project_google_link: project.project_google_link || '',
   } : EMPTY);
   const [users, setUsers] = useState([]);
+  const [crew, setCrew] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (['bdm', 'exec_pa'].includes(user.role)) {
-      api.get('/users').then(r => setUsers(r.data)).catch(console.error);
-    }
-  }, [user.role]);
+    api.get('/users').then(r => {
+      const list = r.data;
+      setUsers(list);
+
+      if (project?.crew && project.crew.length > 0) {
+        setCrew(project.crew.map(c => ({
+          user_id: c.user_id,
+          is_lead: c.is_lead,
+          gp_allocated: c.gp_allocated || '',
+        })));
+      } else if (!project?.id) {
+        // New project: pre-fill lead
+        const leadId = isBDM ? (project?.assigned_to || null) : user.id;
+        if (leadId) {
+          setCrew([{ user_id: leadId, is_lead: true, gp_allocated: '' }]);
+        }
+      }
+    }).catch(console.error);
+  }, []);
+
+  // When assignee changes (BDM), update lead in crew
+  const handleAssigneeChange = (newId) => {
+    setForm(f => ({ ...f, assigned_to: parseInt(newId) }));
+    setCrew(prev => {
+      const leadIdx = prev.findIndex(c => c.is_lead);
+      if (leadIdx === -1) return [{ user_id: parseInt(newId), is_lead: true, gp_allocated: '' }, ...prev];
+      const updated = [...prev];
+      updated[leadIdx] = { ...updated[leadIdx], user_id: parseInt(newId) };
+      return updated;
+    });
+  };
+
+  const addCrewMember = () => {
+    setCrew(prev => [...prev, { user_id: '', is_lead: false, gp_allocated: '' }]);
+  };
+
+  const updateCrewMember = (idx, updated) => {
+    setCrew(prev => prev.map((c, i) => i === idx ? updated : c));
+  };
+
+  const removeCrewMember = (idx) => {
+    setCrew(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const gp = (parseFloat(form.revenue) || 0) - (parseFloat(form.cost) || 0);
+  const allocatedGP = crew.reduce((s, c) => s + (parseFloat(c.gp_allocated) || 0), 0);
+  const remainingGP = gp - allocatedGP;
+  const crewIds = crew.filter(c => c.user_id).map(c => c.user_id);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
     setError('');
     try {
-      const payload = { ...form, revenue: parseFloat(form.revenue), cost: parseFloat(form.cost) };
+      const validCrew = crew.filter(c => c.user_id);
+      const payload = {
+        ...form,
+        revenue: parseFloat(form.revenue),
+        cost: parseFloat(form.cost),
+        crew: validCrew.length > 0 ? validCrew.map(c => ({
+          user_id: c.user_id,
+          is_lead: !!c.is_lead,
+          gp_allocated: parseFloat(c.gp_allocated) || 0,
+        })) : [],
+      };
       if (project?.id) {
         await api.put(`/projects/${project.id}`, payload);
       } else {
@@ -45,7 +136,8 @@ function ProjectModal({ project, onSave, onClose }) {
     }
   };
 
-  const gp = (parseFloat(form.revenue) || 0) - (parseFloat(form.cost) || 0);
+  const leadEntry = crew.find(c => c.is_lead);
+  const nonLeadCrew = crew.filter(c => !c.is_lead);
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -67,8 +159,7 @@ function ProjectModal({ project, onSave, onClose }) {
             <div>
               <label className="label">Type</label>
               <select className="input" value={form.project_type} onChange={e => setForm(f => ({ ...f, project_type: e.target.value }))}>
-                <option value="events">Events</option>
-                <option value="non_events">Non-Events</option>
+                {EVENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div>
@@ -101,20 +192,118 @@ function ProjectModal({ project, onSave, onClose }) {
               <span className="text-sm text-gray-600">Gross Profit</span>
               <span className={`text-lg font-bold ${gp >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(gp)}</span>
             </div>
-            {['bdm', 'exec_pa'].includes(user.role) && users.length > 0 && (
-              <div className="col-span-2">
-                <label className="label">Assign To</label>
-                <select className="input" value={form.assigned_to || ''} onChange={e => setForm(f => ({ ...f, assigned_to: parseInt(e.target.value) }))}>
-                  <option value="">Select member...</option>
+          </div>
+
+          {/* GP Distribution */}
+          <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-700">GP Distribution</h3>
+              {allocatedGP > 0 && (
+                <span className={`text-xs font-medium ${remainingGP < -0.01 ? 'text-red-600' : 'text-gray-500'}`}>
+                  Allocated {formatCurrency(allocatedGP)} / Remaining {formatCurrency(remainingGP)}
+                </span>
+              )}
+            </div>
+
+            {isBDM && users.length > 0 && (
+              <div>
+                <label className="label text-xs">Project Lead (Assign To)</label>
+                <select
+                  className="input text-sm"
+                  value={form.assigned_to || ''}
+                  onChange={e => handleAssigneeChange(e.target.value)}
+                >
+                  <option value="">Select project lead...</option>
                   {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role.toUpperCase()})</option>)}
                 </select>
               </div>
             )}
-            <div className="col-span-2">
-              <label className="label">Notes</label>
-              <textarea className="input" rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+
+            {/* Lead GP allocation */}
+            <div className="flex items-center gap-2 bg-orange-50 rounded-lg px-3 py-2">
+              <span className="text-xs font-medium text-orange-700 flex-1">
+                {leadEntry
+                  ? (users.find(u => u.id === leadEntry.user_id)?.name || (isBDM ? 'Project Lead' : user.name)) + ' (Lead)'
+                  : isBDM ? 'Select a project lead above' : user.name + ' (Lead)'}
+              </span>
+              <span className="text-xs text-gray-500">GP $</span>
+              <input
+                type="number"
+                className="input w-28 text-sm"
+                placeholder="0"
+                min="0"
+                step="0.01"
+                value={leadEntry?.gp_allocated || ''}
+                onChange={e => {
+                  setCrew(prev => {
+                    const idx = prev.findIndex(c => c.is_lead);
+                    if (idx === -1) {
+                      const leadId = isBDM ? (form.assigned_to || null) : user.id;
+                      return [...prev, { user_id: leadId, is_lead: true, gp_allocated: e.target.value }];
+                    }
+                    const updated = [...prev];
+                    updated[idx] = { ...updated[idx], gp_allocated: e.target.value };
+                    return updated;
+                  });
+                }}
+              />
             </div>
+
+            {/* Non-lead crew */}
+            {nonLeadCrew.map((member, i) => {
+              const actualIdx = crew.findIndex((c, ci) => !c.is_lead && crew.filter(x => !x.is_lead).indexOf(c) === i);
+              const crewIdx = crew.indexOf(member);
+              return (
+                <CrewRow
+                  key={crewIdx}
+                  member={member}
+                  users={users}
+                  onUpdate={updated => updateCrewMember(crewIdx, updated)}
+                  onRemove={() => removeCrewMember(crewIdx)}
+                  disabledIds={crewIds}
+                />
+              );
+            })}
+
+            <button
+              type="button"
+              onClick={addCrewMember}
+              className="text-sm text-brand-600 hover:text-brand-700 font-medium flex items-center gap-1"
+            >
+              + Add Event Crew Member
+            </button>
+
+            {allocatedGP > 0 && (
+              <div className="pt-1">
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>GP Allocated</span>
+                  <span>{formatCurrency(allocatedGP)} of {formatCurrency(gp)}</span>
+                </div>
+                <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${allocatedGP > gp ? 'bg-red-500' : 'bg-green-500'}`}
+                    style={{ width: `${Math.min(100, gp > 0 ? (allocatedGP / gp) * 100 : 0)}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
+
+          <div>
+            <label className="label">Project Google Link</label>
+            <input
+              type="url"
+              className="input"
+              placeholder="https://drive.google.com/..."
+              value={form.project_google_link}
+              onChange={e => setForm(f => ({ ...f, project_google_link: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="label">Notes</label>
+            <textarea className="input" rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+          </div>
+
           {error && <p className="text-sm text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
           <div className="flex gap-2 pt-2">
             <button type="submit" disabled={saving} className="btn-primary flex-1">{saving ? 'Saving...' : 'Save Project'}</button>
@@ -204,9 +393,21 @@ export default function Projects() {
             <tbody className="divide-y divide-gray-100">
               {projects.map(p => (
                 <tr key={p.id} className="hover:bg-gray-50">
-                  <td className="py-3 px-4 font-medium text-gray-900">{p.title}</td>
+                  <td className="py-3 px-4 font-medium text-gray-900">
+                    <div>{p.title}</div>
+                    {p.crew && p.crew.length > 0 && (
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        Crew: {p.crew.map(c => c.name).join(', ')}
+                      </div>
+                    )}
+                    {p.project_google_link && (
+                      <a href={p.project_google_link} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-600 hover:underline mt-0.5 block">
+                        Google Drive ↗
+                      </a>
+                    )}
+                  </td>
                   <td className="py-3 px-4 text-gray-600">{p.client_name}</td>
-                  <td className="py-3 px-4 text-gray-500 capitalize">{p.project_type.replace('_', ' ')}</td>
+                  <td className="py-3 px-4 text-gray-500 text-xs">{p.project_type}</td>
                   <td className="py-3 px-4 text-gray-500">{formatDate(p.confirmation_date)}</td>
                   <td className="py-3 px-4 text-gray-500">{formatDate(p.event_date)}</td>
                   <td className="py-3 px-4 text-right">{formatCurrency(p.revenue)}</td>

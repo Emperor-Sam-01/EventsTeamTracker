@@ -27,10 +27,15 @@ router.get('/individual/:userId', authenticate, async (req, res) => {
     const tenureMonths = getTenureMonths(user.join_date);
     const multiplier = ['bda', 'pa'].includes(user.role) ? getAssistantMultiplier(tenureMonths) : 1;
 
-    // Monthly GP (for BDE/BDM) or build quarterly GP
+    // GP with crew distribution: own projects without crew + crew-allocated GP
     const { rows: projectRows } = await pool.query(
-      `SELECT gp, period_month, period_year, project_type, status FROM projects
-       WHERE assigned_to = $1 AND status IN ('confirmed','completed')`,
+      `SELECT gp, period_month, period_year FROM projects
+       WHERE assigned_to = $1 AND status IN ('confirmed','completed')
+         AND NOT EXISTS (SELECT 1 FROM project_crew WHERE project_id = id)
+       UNION ALL
+       SELECT pc.gp_allocated AS gp, p.period_month, p.period_year
+       FROM project_crew pc JOIN projects p ON p.id = pc.project_id
+       WHERE pc.user_id = $1 AND p.status IN ('confirmed','completed')`,
       [targetId]
     );
 
@@ -134,9 +139,15 @@ router.get('/team', authenticate, requireBDM, async (req, res) => {
        FROM users WHERE is_active = TRUE AND role != 'exec_pa' ORDER BY name`
     );
 
+    // GP with crew distribution for team view
     const { rows: projects } = await pool.query(
-      `SELECT assigned_to, gp, period_month, period_year, project_type, status
-       FROM projects WHERE status IN ('confirmed','completed') AND period_year = $1`,
+      `SELECT assigned_to AS user_id, gp, period_month, period_year FROM projects
+       WHERE status IN ('confirmed','completed') AND period_year = $1
+         AND NOT EXISTS (SELECT 1 FROM project_crew WHERE project_id = id)
+       UNION ALL
+       SELECT pc.user_id, pc.gp_allocated AS gp, p.period_month, p.period_year
+       FROM project_crew pc JOIN projects p ON p.id = pc.project_id
+       WHERE p.status IN ('confirmed','completed') AND p.period_year = $1`,
       [y]
     );
 
@@ -155,7 +166,7 @@ router.get('/team', authenticate, requireBDM, async (req, res) => {
       const tenureMonths = getTenureMonths(user.join_date);
       const multiplier = ['bda', 'pa'].includes(user.role) ? getAssistantMultiplier(tenureMonths) : 1;
 
-      const userProjects = projects.filter(p => p.assigned_to === user.id);
+      const userProjects = projects.filter(p => p.user_id === user.id);
       const monthlyGP = userProjects
         .filter(p => p.period_month === m)
         .reduce((sum, p) => sum + parseFloat(p.gp || 0), 0);
@@ -187,7 +198,7 @@ router.get('/team', authenticate, requireBDM, async (req, res) => {
         if (effort.cold_emails_actual < adjustedTargets.cold_emails) {
           gaps.push({ metric: 'Cold Emails', actual: effort.cold_emails_actual, target: adjustedTargets.cold_emails });
         }
-        if (user.role === 'bde' && effort.cold_calls_actual < adjustedTargets.cold_calls) {
+        if (['bde','sbde'].includes(user.role) && effort.cold_calls_actual < adjustedTargets.cold_calls) {
           gaps.push({ metric: 'Cold Calls', actual: effort.cold_calls_actual, target: adjustedTargets.cold_calls });
         }
         if (effort.proposals_sent_actual < adjustedTargets.proposals_sent) {
@@ -195,8 +206,8 @@ router.get('/team', authenticate, requireBDM, async (req, res) => {
         }
       }
 
-      const gpTarget = user.role === 'bde' ? GP_TARGETS.bde.t1 :
-                       user.role === 'pe' ? GP_TARGETS.pe.t1 :
+      const gpTarget = ['bde','sbde'].includes(user.role) ? GP_TARGETS.bde.t1 :
+                       ['pe','spe'].includes(user.role) ? GP_TARGETS.pe.t1 :
                        user.role === 'bdm' ? GP_TARGETS.bdm.base : 0;
       const adjustedGPTarget = gpTarget * multiplier;
       if (gpForTier < adjustedGPTarget) {

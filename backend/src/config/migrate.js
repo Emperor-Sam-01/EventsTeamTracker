@@ -89,6 +89,32 @@ CREATE TABLE IF NOT EXISTS sales_effort (
 -- Add confirmation_date to projects if not exists
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS confirmation_date DATE;
 
+-- Expand project_type to support event categories (drop old restrictive constraint)
+ALTER TABLE projects DROP CONSTRAINT IF EXISTS projects_project_type_check;
+ALTER TABLE projects ALTER COLUMN project_type TYPE VARCHAR(100);
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_google_link TEXT;
+
+-- Clients: new fields
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS project_name VARCHAR(200);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS project_type VARCHAR(100);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS contact_name VARCHAR(100);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS contact_details VARCHAR(200);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS estimated_revenue NUMERIC(12,2);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS estimated_gp NUMERIC(12,2);
+
+-- GP distribution across crew members on a project
+CREATE TABLE IF NOT EXISTS project_crew (
+  id SERIAL PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  is_lead BOOLEAN NOT NULL DEFAULT FALSE,
+  gp_allocated NUMERIC(12,2) NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(project_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_project_crew_project ON project_crew(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_crew_user ON project_crew(user_id);
+
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('bdm', 'exec_pa', 'bde', 'sbde', 'pe', 'spe', 'bda', 'pa'));
 
