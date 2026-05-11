@@ -1,34 +1,51 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import api from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 import { ROLE_LABELS, ROLE_COLORS, formatCurrency } from '../utils/format';
 
 const ASSISTANT_ROLES = ['bda', 'pa'];
+const PE_ROLES = ['pe', 'spe'];
 const CPF_OPTIONS = [
-  { value: 'cpf', label: 'CPF' },
+  { value: 'cpf',         label: 'CPF' },
   { value: 'work_permit', label: 'Work Permit' },
-  { value: 's_pass', label: 'S-Pass' },
-  { value: 'e_pass', label: 'E-Pass' },
+  { value: 's_pass',      label: 'S-Pass' },
+  { value: 'e_pass',      label: 'E-Pass' },
 ];
 const CPF_LABELS = Object.fromEntries(CPF_OPTIONS.map(o => [o.value, o.label]));
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function getManagementFee(role) {
+  if (role === 'exec_pa') return 0;
   if (ASSISTANT_ROLES.includes(role)) return 700;
-  if (['pe', 'spe'].includes(role)) return 1300;
+  if (PE_ROLES.includes(role)) return 1300;
   return 1900;
 }
 
 function calcMonthlyCost(salary, cpf_type, cpf_rate, permit_cost, role) {
+  if (role === 'exec_pa') return 0;
   const sal = parseFloat(salary) || 0;
-  const cpfCost = cpf_type === 'cpf' ? sal * (parseFloat(cpf_rate) || 0) : parseFloat(permit_cost) || 0;
+  const cpfCost = cpf_type === 'cpf'
+    ? sal * (parseFloat(cpf_rate) || 0)
+    : parseFloat(permit_cost) || 0;
   return sal + cpfCost + getManagementFee(role);
 }
 
-function calcTargets(t1) {
+function calcBDTargets(t1) {
   const v = parseFloat(t1) || 0;
   return { t0_5: v / 2, t1: v, t2: v + 4000, t3: v + 10000 };
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function calcPETargets(t1Monthly) {
+  const v = parseFloat(t1Monthly) || 0;
+  return { t1q: v * 0.75 * 3 }; // T2Q: t1q–$50k, T3Q: $50k+
+}
+
+function fmtJoinDate(d) {
+  if (!d) return '—';
+  const dateStr = d.split('T')[0];
+  const dt = new Date(dateStr + 'T12:00:00');
+  return `${MONTHS[dt.getMonth()]} ${dt.getFullYear()}`;
+}
 
 const EMPTY = {
   name: '', email: '', password: '', role: 'bde',
@@ -41,7 +58,8 @@ const EMPTY = {
 function UserModal({ user, onSave, onClose }) {
   const initForm = () => {
     if (!user) return EMPTY;
-    const d = user.join_date ? new Date(user.join_date + 'T12:00:00') : new Date();
+    const dateStr = user.join_date ? user.join_date.split('T')[0] : null;
+    const d = dateStr ? new Date(dateStr + 'T12:00:00') : new Date();
     return {
       name: user.name || '',
       email: user.email || '',
@@ -49,11 +67,11 @@ function UserModal({ user, onSave, onClose }) {
       role: user.role || 'bde',
       join_month: d.getMonth() + 1,
       join_year: d.getFullYear(),
-      salary: user.salary || '',
+      salary: user.salary != null ? String(user.salary) : '',
       cpf_type: user.cpf_type || 'cpf',
-      cpf_rate: user.cpf_rate || '0.17',
-      permit_cost: user.permit_cost || '0',
-      gp_target_t1: user.gp_target_t1 || '',
+      cpf_rate: user.cpf_rate != null ? String(user.cpf_rate) : '0.17',
+      permit_cost: user.permit_cost != null ? String(user.permit_cost) : '0',
+      gp_target_t1: user.gp_target_t1 != null ? String(user.gp_target_t1) : '',
     };
   };
 
@@ -61,12 +79,16 @@ function UserModal({ user, onSave, onClose }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const isExecPA   = form.role === 'exec_pa';
   const isAssistant = ASSISTANT_ROLES.includes(form.role);
-  const monthlyCost = calcMonthlyCost(form.salary, form.cpf_type, form.cpf_rate, form.permit_cost, form.role);
-  const targets = calcTargets(form.gp_target_t1);
-  const isCPF = form.cpf_type === 'cpf';
+  const isPE        = PE_ROLES.includes(form.role);
+  const isCPF       = form.cpf_type === 'cpf';
+  const showCost    = !isExecPA;
+  const showTargets = !isExecPA && !isAssistant;
 
-  const f = v => `$${(parseFloat(v) || 0).toLocaleString('en-SG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  const monthlyCost = calcMonthlyCost(form.salary, form.cpf_type, form.cpf_rate, form.permit_cost, form.role);
+  const bdTargets   = calcBDTargets(form.gp_target_t1);
+  const peTargets   = calcPETargets(form.gp_target_t1);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -79,11 +101,11 @@ function UserModal({ user, onSave, onClose }) {
         email: form.email,
         role: form.role,
         join_date,
-        salary: parseFloat(form.salary) || 0,
-        cpf_type: form.cpf_type,
-        cpf_rate: isCPF ? parseFloat(form.cpf_rate) || 0 : 0,
-        permit_cost: !isCPF ? parseFloat(form.permit_cost) || 0 : 0,
-        gp_target_t1: form.gp_target_t1 !== '' ? parseFloat(form.gp_target_t1) : null,
+        salary:      isExecPA ? 0 : (parseFloat(form.salary) || 0),
+        cpf_type:    isExecPA ? 'cpf' : form.cpf_type,
+        cpf_rate:    isExecPA ? 0 : (isCPF ? parseFloat(form.cpf_rate) || 0 : 0),
+        permit_cost: isExecPA ? 0 : (!isCPF ? parseFloat(form.permit_cost) || 0 : 0),
+        gp_target_t1: (showTargets && form.gp_target_t1 !== '') ? parseFloat(form.gp_target_t1) : null,
       };
       if (form.password) payload.password = form.password;
       if (user?.id) {
@@ -136,7 +158,11 @@ function UserModal({ user, onSave, onClose }) {
             <div>
               <label className="label">Join Date (Month &amp; Year)</label>
               <div className="flex gap-2">
-                <select className="input flex-1 text-sm" value={form.join_month} onChange={e => setForm(f => ({ ...f, join_month: parseInt(e.target.value) }))}>
+                <select
+                  className="input flex-1 text-sm"
+                  value={form.join_month}
+                  onChange={e => setForm(f => ({ ...f, join_month: parseInt(e.target.value) }))}
+                >
                   {MONTHS.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
                 </select>
                 <input
@@ -144,109 +170,163 @@ function UserModal({ user, onSave, onClose }) {
                   className="input w-24 text-sm"
                   value={form.join_year}
                   onChange={e => setForm(f => ({ ...f, join_year: parseInt(e.target.value) }))}
-                  min="2000"
-                  max="2099"
-                  required
+                  min="2000" max="2099" required
                 />
               </div>
             </div>
-            <div>
-              <label className="label">Monthly Salary ($)</label>
-              <input type="number" className="input" value={form.salary} onChange={e => setForm(f => ({ ...f, salary: e.target.value }))} required min="0" step="0.01" />
-            </div>
-            <div>
-              <label className="label">CPF / Permit</label>
-              <select className="input" value={form.cpf_type} onChange={e => setForm(f => ({ ...f, cpf_type: e.target.value }))}>
-                {CPF_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
-            {isCPF ? (
-              <div>
-                <label className="label">CPF Employer Rate</label>
-                <input
-                  type="number"
-                  className="input"
-                  value={form.cpf_rate}
-                  onChange={e => setForm(f => ({ ...f, cpf_rate: e.target.value }))}
-                  step="0.001"
-                  min="0"
-                  max="1"
-                  placeholder="e.g. 0.17 for 17%"
-                />
+
+            {isExecPA && (
+              <div className="col-span-2">
+                <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-500 text-center">
+                  Executive PA is an administrative account — no salary or cost fields required.
+                </div>
               </div>
-            ) : (
-              <div>
-                <label className="label">Monthly Permit Cost ($)</label>
-                <input
-                  type="number"
-                  className="input"
-                  value={form.permit_cost}
-                  onChange={e => setForm(f => ({ ...f, permit_cost: e.target.value }))}
-                  min="0"
-                  step="0.01"
-                />
-              </div>
+            )}
+
+            {showCost && (
+              <>
+                <div>
+                  <label className="label">Monthly Salary ($)</label>
+                  <input
+                    type="number" className="input"
+                    value={form.salary}
+                    onChange={e => setForm(f => ({ ...f, salary: e.target.value }))}
+                    required min="0" step="0.01"
+                  />
+                </div>
+                <div>
+                  <label className="label">CPF / Permit</label>
+                  <select className="input" value={form.cpf_type} onChange={e => setForm(f => ({ ...f, cpf_type: e.target.value }))}>
+                    {CPF_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                {isCPF ? (
+                  <div>
+                    <label className="label">CPF Employer Rate</label>
+                    <input
+                      type="number" className="input"
+                      value={form.cpf_rate}
+                      onChange={e => setForm(f => ({ ...f, cpf_rate: e.target.value }))}
+                      step="0.001" min="0" max="1"
+                      placeholder="e.g. 0.17 for 17%"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="label">Monthly Permit Cost ($)</label>
+                    <input
+                      type="number" className="input"
+                      value={form.permit_cost}
+                      onChange={e => setForm(f => ({ ...f, permit_cost: e.target.value }))}
+                      min="0" step="0.01"
+                    />
+                  </div>
+                )}
+              </>
             )}
           </div>
 
-          {/* Monthly Cost Summary */}
-          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-sm">
-            <div className="font-semibold text-blue-800 mb-2">Monthly Cost Breakdown</div>
-            <div className="space-y-1 text-blue-700">
-              <div className="flex justify-between">
-                <span>Salary</span>
-                <span>{f(form.salary)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>{isCPF ? `CPF (${Math.round((parseFloat(form.cpf_rate) || 0) * 100)}%)` : CPF_LABELS[form.cpf_type]}</span>
-                <span>{isCPF ? f((parseFloat(form.salary) || 0) * (parseFloat(form.cpf_rate) || 0)) : f(form.permit_cost)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Management Fee</span>
-                <span>{f(getManagementFee(form.role))}</span>
-              </div>
-              <div className="flex justify-between font-bold text-blue-900 border-t border-blue-200 pt-1 mt-1">
-                <span>Total Monthly Cost</span>
-                <span>{f(monthlyCost)}</span>
+          {/* Monthly Cost Breakdown */}
+          {showCost && (
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-sm">
+              <div className="font-semibold text-blue-800 mb-2">Monthly Cost Breakdown</div>
+              <div className="space-y-1 text-blue-700">
+                <div className="flex justify-between">
+                  <span>Salary</span>
+                  <span>{formatCurrency(form.salary)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>{isCPF ? `CPF (${Math.round((parseFloat(form.cpf_rate) || 0) * 100)}%)` : CPF_LABELS[form.cpf_type]}</span>
+                  <span>
+                    {isCPF
+                      ? formatCurrency((parseFloat(form.salary) || 0) * (parseFloat(form.cpf_rate) || 0))
+                      : formatCurrency(form.permit_cost)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Management Fee</span>
+                  <span>{formatCurrency(getManagementFee(form.role))}</span>
+                </div>
+                <div className="flex justify-between font-bold text-blue-900 border-t border-blue-200 pt-1 mt-1">
+                  <span>Total Monthly Cost</span>
+                  <span>{formatCurrency(monthlyCost)}</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* GP Targets (non-assistant only) */}
-          {!isAssistant && (
+          {/* GP Targets */}
+          {showTargets && (
             <>
               <hr className="border-gray-200" />
-              <div>
-                <div className="font-semibold text-gray-700 text-sm mb-1">Individual GP Targets</div>
-                <div className="text-xs text-gray-400 mb-3">T0.5 = T1÷2 &nbsp;|&nbsp; T2 = T1+$4,000 &nbsp;|&nbsp; T3 = T2+$6,000</div>
+              {isPE ? (
                 <div>
-                  <label className="label">T1 Target (Monthly GP, $)</label>
-                  <input
-                    type="number"
-                    className="input"
-                    placeholder="e.g. 8000"
-                    value={form.gp_target_t1}
-                    onChange={e => setForm(f => ({ ...f, gp_target_t1: e.target.value }))}
-                    min="0"
-                    step="100"
-                  />
-                </div>
-                {form.gp_target_t1 && (
-                  <div className="grid grid-cols-4 gap-2 mt-3">
-                    {[
-                      { label: 'T0.5', val: targets.t0_5, color: 'bg-gray-50 text-gray-600' },
-                      { label: 'T1', val: targets.t1, color: 'bg-amber-50 text-amber-700' },
-                      { label: 'T2', val: targets.t2, color: 'bg-blue-50 text-blue-700' },
-                      { label: 'T3', val: targets.t3, color: 'bg-green-50 text-green-700' },
-                    ].map(t => (
-                      <div key={t.label} className={`rounded-lg p-2 text-center ${t.color}`}>
-                        <div className="text-xs font-semibold">{t.label}</div>
-                        <div className="text-sm font-bold">{f(t.val)}</div>
-                      </div>
-                    ))}
+                  <div className="font-semibold text-gray-700 text-sm mb-1">GP Targets — Project Executive</div>
+                  <div className="text-xs text-gray-400 mb-3">Quarterly tiers calculated from monthly T1 input</div>
+                  <div>
+                    <label className="label">T1 Target (Monthly GP, $)</label>
+                    <input
+                      type="number" className="input"
+                      placeholder="e.g. 5000"
+                      value={form.gp_target_t1}
+                      onChange={e => setForm(f => ({ ...f, gp_target_t1: e.target.value }))}
+                      min="0" step="0.01"
+                    />
                   </div>
-                )}
-              </div>
+                  {form.gp_target_t1 && (
+                    <div className="mt-3">
+                      <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Quarterly Tiers</div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-amber-50 text-amber-700 rounded-lg p-2 text-center">
+                          <div className="text-xs font-semibold">Tier 1 (Quarterly)</div>
+                          <div className="text-sm font-bold">{formatCurrency(peTargets.t1q)}</div>
+                          <div className="text-xs opacity-70">T1 × 0.75 × 3</div>
+                        </div>
+                        <div className="bg-blue-50 text-blue-700 rounded-lg p-2 text-center">
+                          <div className="text-xs font-semibold">Tier 2 (Quarterly)</div>
+                          <div className="text-sm font-bold">{formatCurrency(peTargets.t1q)} – $50K</div>
+                          <div className="text-xs opacity-70">T1Q to $50,000</div>
+                        </div>
+                        <div className="bg-green-50 text-green-700 rounded-lg p-2 text-center">
+                          <div className="text-xs font-semibold">Tier 3 (Quarterly)</div>
+                          <div className="text-sm font-bold">$50,001+</div>
+                          <div className="text-xs opacity-70">Above $50,000</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <div className="font-semibold text-gray-700 text-sm mb-1">Individual GP Targets</div>
+                  <div className="text-xs text-gray-400 mb-3">T0.5 = T1÷2 &nbsp;|&nbsp; T2 = T1+$4,000 &nbsp;|&nbsp; T3 = T2+$6,000</div>
+                  <div>
+                    <label className="label">T1 Target (Monthly GP, $)</label>
+                    <input
+                      type="number" className="input"
+                      placeholder="e.g. 8000"
+                      value={form.gp_target_t1}
+                      onChange={e => setForm(f => ({ ...f, gp_target_t1: e.target.value }))}
+                      min="0" step="0.01"
+                    />
+                  </div>
+                  {form.gp_target_t1 && (
+                    <div className="grid grid-cols-4 gap-2 mt-3">
+                      {[
+                        { label: 'T0.5', val: bdTargets.t0_5, color: 'bg-gray-50 text-gray-600' },
+                        { label: 'T1',   val: bdTargets.t1,   color: 'bg-amber-50 text-amber-700' },
+                        { label: 'T2',   val: bdTargets.t2,   color: 'bg-blue-50 text-blue-700' },
+                        { label: 'T3',   val: bdTargets.t3,   color: 'bg-green-50 text-green-700' },
+                      ].map(t => (
+                        <div key={t.label} className={`rounded-lg p-2 text-center ${t.color}`}>
+                          <div className="text-xs font-semibold">{t.label}</div>
+                          <div className="text-sm font-bold">{formatCurrency(t.val)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
 
@@ -268,7 +348,8 @@ function DeleteConfirmModal({ user, onConfirm, onClose }) {
       <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl p-6 space-y-4">
         <h2 className="font-semibold text-gray-900 text-lg">Delete Member</h2>
         <p className="text-sm text-gray-600">
-          This will <span className="font-semibold text-red-600">permanently delete</span> all data for <span className="font-semibold">{user.name}</span>, including their projects, clients, and meeting history. This cannot be undone.
+          This will <span className="font-semibold text-red-600">permanently delete</span> all data for{' '}
+          <span className="font-semibold">{user.name}</span>, including their projects, clients, and meeting history. This cannot be undone.
         </p>
         <div className="flex gap-2">
           <button
@@ -286,6 +367,7 @@ function DeleteConfirmModal({ user, onConfirm, onClose }) {
 }
 
 export default function TeamManagement() {
+  const { user } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -322,13 +404,7 @@ export default function TeamManagement() {
     else { setSortBy(col); setSortDir('asc'); }
   };
 
-  const SortIcon = ({ col }) => sortBy === col ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
-
-  const fmtJoinDate = (d) => {
-    if (!d) return '—';
-    const dt = new Date(d + 'T12:00:00');
-    return `${MONTHS[dt.getMonth()]} ${dt.getFullYear()}`;
-  };
+  const SortIcon = ({ col }) => <span className="text-gray-400">{sortBy === col ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}</span>;
 
   const filtered = useMemo(() => {
     let list = users.filter(u => {
@@ -340,12 +416,10 @@ export default function TeamManagement() {
     });
     list = [...list].sort((a, b) => {
       let va, vb;
-      if (sortBy === 'name') { va = a.name.toLowerCase(); vb = b.name.toLowerCase(); }
+      if (sortBy === 'name')      { va = a.name.toLowerCase(); vb = b.name.toLowerCase(); }
       else if (sortBy === 'salary') { va = parseFloat(a.salary) || 0; vb = parseFloat(b.salary) || 0; }
-      else if (sortBy === 'cost') {
-        va = calcMonthlyCost(a.salary, a.cpf_type, a.cpf_rate, a.permit_cost, a.role);
-        vb = calcMonthlyCost(b.salary, b.cpf_type, b.cpf_rate, b.permit_cost, b.role);
-      } else if (sortBy === 'role') { va = a.role; vb = b.role; }
+      else if (sortBy === 'cost')   { va = calcMonthlyCost(a.salary, a.cpf_type, a.cpf_rate, a.permit_cost, a.role); vb = calcMonthlyCost(b.salary, b.cpf_type, b.cpf_rate, b.permit_cost, b.role); }
+      else if (sortBy === 'role')   { va = a.role; vb = b.role; }
       else if (sortBy === 'join_date') { va = a.join_date || ''; vb = b.join_date || ''; }
       if (va < vb) return sortDir === 'asc' ? -1 : 1;
       if (va > vb) return sortDir === 'asc' ? 1 : -1;
@@ -354,7 +428,19 @@ export default function TeamManagement() {
     return list;
   }, [users, filter, sortBy, sortDir]);
 
-  const totalCost = filtered.filter(u => u.is_active).reduce((s, u) => s + calcMonthlyCost(u.salary, u.cpf_type, u.cpf_rate, u.permit_cost, u.role), 0);
+  const totalCost = filtered.filter(u => u.is_active).reduce(
+    (s, u) => s + calcMonthlyCost(u.salary, u.cpf_type, u.cpf_rate, u.permit_cost, u.role), 0
+  );
+
+  if (user?.role !== 'bdm') {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-center space-y-2">
+        <div className="text-4xl">🔒</div>
+        <div className="text-gray-700 font-semibold">Access Restricted</div>
+        <div className="text-sm text-gray-400">Team Management is only available to the Business Development Manager.</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -392,12 +478,12 @@ export default function TeamManagement() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-xs text-gray-500 uppercase border-b bg-gray-50">
-                <th className="text-left py-3 px-3 cursor-pointer hover:text-gray-700 select-none" onClick={() => toggleSort('name')}>Name<SortIcon col="name" /></th>
-                <th className="text-left py-3 px-3 cursor-pointer hover:text-gray-700 select-none" onClick={() => toggleSort('role')}>Role<SortIcon col="role" /></th>
-                <th className="text-left py-3 px-3 cursor-pointer hover:text-gray-700 select-none" onClick={() => toggleSort('join_date')}>Joined<SortIcon col="join_date" /></th>
-                <th className="text-right py-3 px-3 cursor-pointer hover:text-gray-700 select-none" onClick={() => toggleSort('salary')}>Salary<SortIcon col="salary" /></th>
+                <th className="text-left py-3 px-3 cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('name')}>Name<SortIcon col="name" /></th>
+                <th className="text-left py-3 px-3 cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('role')}>Role<SortIcon col="role" /></th>
+                <th className="text-left py-3 px-3 cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('join_date')}>Joined<SortIcon col="join_date" /></th>
+                <th className="text-right py-3 px-3 cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('salary')}>Salary<SortIcon col="salary" /></th>
                 <th className="text-left py-3 px-3">CPF/Permit</th>
-                <th className="text-right py-3 px-3 cursor-pointer hover:text-gray-700 select-none" onClick={() => toggleSort('cost')}>Monthly Cost<SortIcon col="cost" /></th>
+                <th className="text-right py-3 px-3 cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('cost')}>Monthly Cost<SortIcon col="cost" /></th>
                 <th className="text-right py-3 px-3">GP Targets</th>
                 <th className="text-left py-3 px-3">Status</th>
                 <th className="py-3 px-3" />
@@ -408,34 +494,50 @@ export default function TeamManagement() {
                 <tr><td colSpan={9} className="text-center py-10 text-gray-400">No members found.</td></tr>
               )}
               {filtered.map(u => {
-                const cost = calcMonthlyCost(u.salary, u.cpf_type, u.cpf_rate, u.permit_cost, u.role);
-                const targets = calcTargets(u.gp_target_t1);
+                const isExecPA    = u.role === 'exec_pa';
                 const isAssistant = ASSISTANT_ROLES.includes(u.role);
-                const isCPF = u.cpf_type === 'cpf';
-                const cpfDetail = isCPF
+                const isPE        = PE_ROLES.includes(u.role);
+                const cost        = calcMonthlyCost(u.salary, u.cpf_type, u.cpf_rate, u.permit_cost, u.role);
+                const isCPF       = u.cpf_type === 'cpf';
+                const cpfDetail   = isCPF
                   ? `${Math.round((parseFloat(u.cpf_rate) || 0) * 100)}%`
                   : formatCurrency(u.permit_cost);
+                const bdT = calcBDTargets(u.gp_target_t1);
+                const peT = calcPETargets(u.gp_target_t1);
+
                 return (
                   <tr key={u.id} className={`hover:bg-gray-50 ${!u.is_active ? 'opacity-50' : ''}`}>
                     <td className="py-2.5 px-3 font-medium text-gray-900">{u.name}</td>
                     <td className="py-2.5 px-3"><span className={`badge ${ROLE_COLORS[u.role]}`}>{u.role.toUpperCase()}</span></td>
                     <td className="py-2.5 px-3 text-gray-500">{fmtJoinDate(u.join_date)}</td>
-                    <td className="py-2.5 px-3 text-right">{formatCurrency(u.salary)}</td>
+                    <td className="py-2.5 px-3 text-right">{isExecPA ? '—' : formatCurrency(u.salary)}</td>
                     <td className="py-2.5 px-3 text-gray-500 text-xs">
-                      {CPF_LABELS[u.cpf_type] || u.cpf_type} ({cpfDetail})
+                      {isExecPA ? '—' : `${CPF_LABELS[u.cpf_type] || u.cpf_type} (${cpfDetail})`}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-semibold">{formatCurrency(cost)}</td>
+                    <td className="py-2.5 px-3 text-right font-semibold">
+                      {isExecPA ? '—' : formatCurrency(cost)}
+                    </td>
                     <td className="py-2.5 px-3 text-right text-xs text-gray-500">
-                      {isAssistant ? (
+                      {isExecPA ? (
+                        <span className="text-gray-300 italic">Admin only</span>
+                      ) : isAssistant ? (
                         <span className="text-gray-400 italic">Baseline × multiplier</span>
-                      ) : u.gp_target_t1 ? (
-                        <div className="space-y-0.5">
-                          <div><span className="text-amber-600 font-medium">T1</span> {formatCurrency(targets.t1)}</div>
-                          <div><span className="text-blue-600 font-medium">T2</span> {formatCurrency(targets.t2)}</div>
-                          <div><span className="text-green-600 font-medium">T3</span> {formatCurrency(targets.t3)}</div>
-                        </div>
+                      ) : isPE ? (
+                        u.gp_target_t1 ? (
+                          <div className="space-y-0.5">
+                            <div><span className="text-amber-600 font-medium">T1Q</span> {formatCurrency(peT.t1q)}</div>
+                            <div><span className="text-blue-600 font-medium">T2Q</span> {formatCurrency(peT.t1q)}–$50K</div>
+                            <div><span className="text-green-600 font-medium">T3Q</span> $50,001+</div>
+                          </div>
+                        ) : <span className="text-gray-300">Not set</span>
                       ) : (
-                        <span className="text-gray-300">Not set</span>
+                        u.gp_target_t1 ? (
+                          <div className="space-y-0.5">
+                            <div><span className="text-amber-600 font-medium">T1</span> {formatCurrency(bdT.t1)}</div>
+                            <div><span className="text-blue-600 font-medium">T2</span> {formatCurrency(bdT.t2)}</div>
+                            <div><span className="text-green-600 font-medium">T3</span> {formatCurrency(bdT.t3)}</div>
+                          </div>
+                        ) : <span className="text-gray-300">Not set</span>
                       )}
                     </td>
                     <td className="py-2.5 px-3">
@@ -447,7 +549,9 @@ export default function TeamManagement() {
                       <div className="flex gap-2 justify-end">
                         <button onClick={() => { setEditing(u); setShowModal(true); }} className="text-xs text-brand-600 hover:underline">Edit</button>
                         <button onClick={() => resetPassword(u)} className="text-xs text-gray-500 hover:underline">Reset PW</button>
-                        <button onClick={() => toggleActive(u)} className={`text-xs hover:underline ${u.is_active ? 'text-orange-500' : 'text-green-600'}`}>{u.is_active ? 'Deactivate' : 'Reactivate'}</button>
+                        <button onClick={() => toggleActive(u)} className={`text-xs hover:underline ${u.is_active ? 'text-orange-500' : 'text-green-600'}`}>
+                          {u.is_active ? 'Deactivate' : 'Reactivate'}
+                        </button>
                         <button onClick={() => setDeleting(u)} className="text-xs text-red-500 hover:underline">Delete</button>
                       </div>
                     </td>

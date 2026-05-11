@@ -61,20 +61,30 @@ export default function Sidebar({ open, onClose }) {
           {['bdm', 'exec_pa'].includes(user?.role) && (
             <>
               <div className="pt-4 pb-1 px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Team Lead</div>
-              {bdmItems.map(item => (
+              <NavLink
+                to="/team"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+                   ${isActive ? 'bg-brand-600 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`
+                }
+              >
+                <span>🏆</span>
+                Team Overview
+              </NavLink>
+              {user?.role === 'bdm' && (
                 <NavLink
-                  key={item.to}
-                  to={item.to}
+                  to="/team-management"
                   onClick={onClose}
                   className={({ isActive }) =>
                     `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
                      ${isActive ? 'bg-brand-600 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`
                   }
                 >
-                  <span>{item.icon}</span>
-                  {item.label}
+                  <span>⚙️</span>
+                  Team Management
                 </NavLink>
-              ))}
+              )}
             </>
           )}
         </nav>
