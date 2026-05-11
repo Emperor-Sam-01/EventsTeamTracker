@@ -259,7 +259,28 @@ function UserModal({ user, onSave, onClose }) {
           {showTargets && (
             <>
               <hr className="border-gray-200" />
-              {isPE ? (
+              {form.role === 'bdm' ? (
+                <div>
+                  <div className="font-semibold text-gray-700 text-sm mb-1">Monthly GP Target</div>
+                  <div className="text-xs text-gray-400 mb-3">No tiered commission structure for BDM</div>
+                  <div>
+                    <label className="label">Monthly GP Target ($)</label>
+                    <input
+                      type="number" className="input"
+                      placeholder="e.g. 15000"
+                      value={form.gp_target_t1}
+                      onChange={e => setForm(f => ({ ...f, gp_target_t1: e.target.value }))}
+                      min="0" step="0.01"
+                    />
+                  </div>
+                  {form.gp_target_t1 && (
+                    <div className="mt-3 bg-gray-50 rounded-xl p-3 text-sm flex justify-between">
+                      <span className="text-gray-600">Monthly GP Target</span>
+                      <span className="font-bold text-gray-900">{formatCurrency(form.gp_target_t1)}</span>
+                    </div>
+                  )}
+                </div>
+              ) : isPE ? (
                 <div>
                   <div className="font-semibold text-gray-700 text-sm mb-1">GP Targets — Project Executive</div>
                   <div className="text-xs text-gray-400 mb-3">Quarterly tiers calculated from monthly T1 input</div>
@@ -522,6 +543,10 @@ export default function TeamManagement() {
                         <span className="text-gray-300 italic">Admin only</span>
                       ) : isAssistant ? (
                         <span className="text-gray-400 italic">Baseline × multiplier</span>
+                      ) : u.role === 'bdm' ? (
+                        u.gp_target_t1 ? (
+                          <div className="text-gray-700 font-medium">{formatCurrency(u.gp_target_t1)}<span className="text-xs text-gray-400">/mo</span></div>
+                        ) : <span className="text-gray-300">Not set</span>
                       ) : isPE ? (
                         u.gp_target_t1 ? (
                           <div className="space-y-0.5">

@@ -180,6 +180,22 @@ router.get('/team', authenticate, requireBDM, async (req, res) => {
         .filter(p => quarterMonths.includes(p.period_month))
         .reduce((sum, p) => sum + parseFloat(p.gp || 0), 0);
 
+      const ytdGP = userProjects
+        .filter(p => p.period_month <= m)
+        .reduce((sum, p) => sum + parseFloat(p.gp || 0), 0);
+
+      const monthlyFixedCost = (() => {
+        if (user.role === 'exec_pa') return 0;
+        const sal = parseFloat(user.salary) || 0;
+        const cpfCost = user.cpf_type === 'cpf'
+          ? sal * (parseFloat(user.cpf_rate) || 0)
+          : parseFloat(user.permit_cost) || 0;
+        const mgmt = ['bda', 'pa'].includes(user.role) ? 700
+                   : ['pe', 'spe'].includes(user.role) ? 1300 : 1900;
+        return sal + cpfCost + mgmt;
+      })();
+      const ytdNP = ytdGP - monthlyFixedCost * m;
+
       const gpForTier = (user.role === 'pe' || user.role === 'spe') ? quarterlyGP : monthlyGP;
       const tier = getGPTier(user.role, gpForTier);
       const np = calculateNP(monthlyGP, parseFloat(user.salary), user.cpf_type, parseFloat(user.cpf_rate), parseFloat(user.permit_cost), user.role);
@@ -228,7 +244,7 @@ router.get('/team', authenticate, requireBDM, async (req, res) => {
       return {
         id: user.id, name: user.name, role: user.role,
         join_date: user.join_date, tenure_months: tenureMonths, multiplier,
-        gp: { monthly: monthlyGP, quarterly: quarterlyGP, tier, np },
+        gp: { monthly: monthlyGP, quarterly: quarterlyGP, ytd: ytdGP, ytd_np: ytdNP, tier, np },
         clients: clientSummary,
         latest_effort: effort,
         adjusted_targets: adjustedTargets,
@@ -236,18 +252,31 @@ router.get('/team', authenticate, requireBDM, async (req, res) => {
       };
     });
 
-    // Anonymised benchmarks (exclude BDM from ranking)
+    // Benchmarks (exclude BDM from GP ranking)
     const rankable = members.filter(m => m.role !== 'bdm');
     const gpValues = rankable.map(m => m.gp.monthly);
     const teamGP = gpValues.reduce((a, b) => a + b, 0);
-    const teamNP = members.reduce((sum, m) => sum + m.gp.np, 0);
+    const teamNP = members.reduce((sum, mem) => sum + mem.gp.np, 0);
     const avgGP = rankable.length ? teamGP / rankable.length : 0;
     const bestGP = Math.max(...gpValues, 0);
     const worstGP = rankable.length ? Math.min(...gpValues) : 0;
 
+    const ytdGPValues = rankable.map(mem => mem.gp.ytd);
+    const ytdTeamGP = ytdGPValues.reduce((a, b) => a + b, 0);
+    const ytdTeamNP = members.reduce((sum, mem) => sum + mem.gp.ytd_np, 0);
+    const projectedTeamGP = m > 0 ? (ytdTeamGP / m) * 12 : 0;
+    const projectedTeamNP = m > 0 ? (ytdTeamNP / m) * 12 : 0;
+    const avgYtdGP = rankable.length ? ytdTeamGP / rankable.length : 0;
+
     res.json({
       members,
-      benchmarks: { team_gp: teamGP, team_np: teamNP, avg_gp: avgGP, best_gp: bestGP, worst_gp: worstGP },
+      benchmarks: {
+        team_gp: teamGP, team_np: teamNP,
+        avg_gp: avgGP, best_gp: bestGP, worst_gp: worstGP,
+        ytd_team_gp: ytdTeamGP, ytd_team_np: ytdTeamNP,
+        projected_team_gp: projectedTeamGP, projected_team_np: projectedTeamNP,
+        avg_ytd_gp: avgYtdGP,
+      },
       period: { month: m, year: y },
     });
   } catch (err) {

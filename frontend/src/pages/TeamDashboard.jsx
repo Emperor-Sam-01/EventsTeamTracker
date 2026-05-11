@@ -134,6 +134,32 @@ function GapBadge({ gap }) {
   );
 }
 
+const GP_MODES = [
+  { key: 'monthly',   label: 'This Month',      short: 'Monthly' },
+  { key: 'ytd',       label: 'Year-to-Date',     short: 'YTD' },
+  { key: 'projected', label: 'Projected Full Yr', short: 'Projected' },
+];
+
+function ToggleStat({ label, monthly, ytd, projected, isNP }) {
+  const [idx, setIdx] = useState(0);
+  const values = { monthly, ytd, projected };
+  const v = values[GP_MODES[idx].key];
+  const color = isNP ? (v >= 0 ? 'text-green-600' : 'text-red-600') : 'text-gray-900';
+  return (
+    <div className="card cursor-pointer select-none" onClick={() => setIdx((idx + 1) % GP_MODES.length)}>
+      <div className="text-xs text-gray-500 uppercase tracking-wide font-medium">{label}</div>
+      <div className={`text-2xl font-bold mt-1 ${color}`}>{formatCurrency(v)}</div>
+      <div className="flex gap-1 mt-1.5 flex-wrap">
+        {GP_MODES.map((m, i) => (
+          <span key={m.key} className={`text-xs px-1.5 py-0.5 rounded ${i === idx ? 'bg-brand-100 text-brand-700 font-medium' : 'text-gray-300'}`}>
+            {m.short}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function TeamDashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -141,6 +167,9 @@ export default function TeamDashboard() {
   const [period, setPeriod] = useState({ month, year });
   const [selected, setSelected] = useState(null);
   const [tab, setTab] = useState('gp');
+  const [chartMode, setChartMode] = useState('monthly');
+  const [showAvgMonthly, setShowAvgMonthly] = useState(true);
+  const [showAvgYtd, setShowAvgYtd] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -157,7 +186,8 @@ export default function TeamDashboard() {
 
   const gpChartData = members.map(m => ({
     name: m.name.split(' ')[0],
-    gp: m.gp.monthly,
+    monthly: m.gp.monthly,
+    ytd: m.gp.ytd,
     role: m.role,
   }));
 
@@ -197,36 +227,82 @@ export default function TeamDashboard() {
 
       {tab === 'gp' && <>
 
-      {/* Team KPI Summary */}
+      {/* Team KPI Summary — toggleable */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: 'Team GP (Month)', value: formatCurrency(benchmarks.team_gp) },
-          { label: 'Team NP (Month)', value: formatCurrency(benchmarks.team_np), color: benchmarks.team_np >= 0 ? 'text-green-600' : 'text-red-600' },
-          { label: 'Team Average GP', value: formatCurrency(benchmarks.avg_gp) },
-          { label: 'Quarterly NP Target', value: formatCurrency(25000), sub: 'Team target' },
-        ].map(k => (
-          <div key={k.label} className="card">
-            <div className="text-xs text-gray-500 uppercase tracking-wide font-medium">{k.label}</div>
-            <div className={`text-2xl font-bold mt-1 ${k.color || 'text-gray-900'}`}>{k.value}</div>
-            {k.sub && <div className="text-xs text-gray-400">{k.sub}</div>}
-          </div>
-        ))}
+        <ToggleStat
+          label="Team GP"
+          monthly={benchmarks.team_gp}
+          ytd={benchmarks.ytd_team_gp}
+          projected={benchmarks.projected_team_gp}
+        />
+        <ToggleStat
+          label="Team NP"
+          monthly={benchmarks.team_np}
+          ytd={benchmarks.ytd_team_np}
+          projected={benchmarks.projected_team_np}
+          isNP
+        />
+        <div className="card">
+          <div className="text-xs text-gray-500 uppercase tracking-wide font-medium">Avg Monthly GP</div>
+          <div className="text-2xl font-bold mt-1 text-gray-900">{formatCurrency(benchmarks.avg_gp)}</div>
+          <div className="text-xs text-gray-400 mt-0.5">Per member (excl. BDM)</div>
+        </div>
+        <div className="card">
+          <div className="text-xs text-gray-500 uppercase tracking-wide font-medium">Avg YTD GP</div>
+          <div className="text-2xl font-bold mt-1 text-gray-900">{formatCurrency(benchmarks.avg_ytd_gp)}</div>
+          <div className="text-xs text-gray-400 mt-0.5">Per member year-to-date</div>
+        </div>
       </div>
 
       {/* GP Bar Chart */}
       <div className="card">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Monthly GP by Member</h2>
-        <ResponsiveContainer width="100%" height={250}>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div className="flex gap-1">
+            {[{ key: 'monthly', label: 'Monthly GP' }, { key: 'ytd', label: 'Overall GP (YTD)' }].map(opt => (
+              <button
+                key={opt.key}
+                onClick={() => setChartMode(opt.key)}
+                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${chartMode === opt.key ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-3 text-xs">
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input type="checkbox" checked={showAvgMonthly} onChange={e => setShowAvgMonthly(e.target.checked)} className="rounded" />
+              <span className="text-amber-600 font-medium">Avg Monthly</span>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input type="checkbox" checked={showAvgYtd} onChange={e => setShowAvgYtd(e.target.checked)} className="rounded" />
+              <span className="text-purple-600 font-medium">Avg YTD</span>
+            </label>
+          </div>
+        </div>
+        <ResponsiveContainer width="100%" height={260}>
           <BarChart data={gpChartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="name" tick={{ fontSize: 12 }} />
             <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
             <Tooltip formatter={v => formatCurrency(v)} />
-            <ReferenceLine y={benchmarks.avg_gp} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Avg', fontSize: 10, fill: '#f59e0b' }} />
-            <Bar dataKey="gp" fill="#0ea5e9" radius={[4, 4, 0, 0]} name="GP" onClick={d => {
-              const m = members.find(m => m.name.split(' ')[0] === d.name);
-              if (m) setSelected(m.id === selected ? null : m.id);
-            }} />
+            {showAvgMonthly && (
+              <ReferenceLine y={benchmarks.avg_gp} stroke="#f59e0b" strokeDasharray="4 4"
+                label={{ value: 'Avg Mo', fontSize: 10, fill: '#f59e0b', position: 'right' }} />
+            )}
+            {showAvgYtd && (
+              <ReferenceLine y={benchmarks.avg_ytd_gp} stroke="#a855f7" strokeDasharray="4 4"
+                label={{ value: 'Avg YTD', fontSize: 10, fill: '#a855f7', position: 'right' }} />
+            )}
+            <Bar
+              dataKey={chartMode}
+              fill={chartMode === 'monthly' ? '#0ea5e9' : '#6366f1'}
+              radius={[4, 4, 0, 0]}
+              name={chartMode === 'monthly' ? 'Monthly GP' : 'YTD GP'}
+              onClick={d => {
+                const mem = members.find(m => m.name.split(' ')[0] === d.name);
+                if (mem) setSelected(mem.id === selected ? null : mem.id);
+              }}
+            />
           </BarChart>
         </ResponsiveContainer>
       </div>
