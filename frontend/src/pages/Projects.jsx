@@ -326,12 +326,37 @@ function ProjectModal({ project, onSave, onClose }) {
   );
 }
 
+function DeleteProjectModal({ project, onConfirm, onClose }) {
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl p-6 space-y-4">
+        <h2 className="font-semibold text-gray-900 text-lg">Delete Project</h2>
+        <p className="text-sm text-gray-600">
+          Are you sure you want to <span className="font-semibold text-red-600">permanently delete</span> the project <span className="font-semibold">"{project.title}"</span>? This cannot be undone.
+        </p>
+        <div className="flex gap-2">
+          <button
+            className="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl py-2 transition-colors disabled:opacity-50"
+            disabled={confirming}
+            onClick={async () => { setConfirming(true); await onConfirm(); setConfirming(false); }}
+          >
+            {confirming ? 'Deleting...' : 'Yes, Delete'}
+          </button>
+          <button onClick={onClose} className="btn-secondary">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Projects() {
   const { user } = useAuth();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [deleting, setDeleting] = useState(null);
   const { month, year } = getMonthYear();
   const [filter, setFilter] = useState({ month, year, status: '' });
 
@@ -343,6 +368,16 @@ export default function Projects() {
       .then(r => setProjects(r.data))
       .catch(console.error)
       .finally(() => setLoading(false));
+  };
+
+  const handleDelete = async () => {
+    try {
+      await api.delete(`/projects/${deleting.id}`);
+      setDeleting(null);
+      load();
+    } catch {
+      alert('Failed to delete project.');
+    }
   };
 
   useEffect(load, [filter]);
@@ -432,9 +467,14 @@ export default function Projects() {
                   <td className="py-3 px-4"><span className={`badge ${STATUS_COLORS[p.status]}`}>{p.status}</span></td>
                   {['bdm', 'exec_pa'].includes(user.role) && <td className="py-3 px-4 text-gray-500 text-xs">{p.assigned_name}</td>}
                   <td className="py-3 px-4">
-                    {(['bdm', 'exec_pa'].includes(user.role) || p.assigned_to === user.id) && (
-                      <button onClick={() => { setEditing(p); setShowModal(true); }} className="text-xs text-brand-600 hover:underline">Edit</button>
-                    )}
+                    <div className="flex gap-2 justify-end">
+                      {(['bdm', 'exec_pa'].includes(user.role) || p.assigned_to === user.id) && (
+                        <button onClick={() => { setEditing(p); setShowModal(true); }} className="text-xs text-brand-600 hover:underline">Edit</button>
+                      )}
+                      {['bdm', 'exec_pa'].includes(user.role) && (
+                        <button onClick={() => setDeleting(p)} className="text-xs text-red-500 hover:underline">Delete</button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -448,6 +488,14 @@ export default function Projects() {
           project={editing}
           onSave={() => { setShowModal(false); load(); }}
           onClose={() => setShowModal(false)}
+        />
+      )}
+
+      {deleting && (
+        <DeleteProjectModal
+          project={deleting}
+          onConfirm={handleDelete}
+          onClose={() => setDeleting(null)}
         />
       )}
     </div>

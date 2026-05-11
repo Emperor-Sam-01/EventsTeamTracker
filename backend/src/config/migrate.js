@@ -130,6 +130,15 @@ CREATE INDEX IF NOT EXISTS idx_project_crew_user ON project_crew(user_id);
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('bdm', 'exec_pa', 'bde', 'sbde', 'pe', 'spe', 'bda', 'pa'));
 
+-- Individual GP target (T1); T0.5/T2/T3 derived on frontend
+ALTER TABLE users ADD COLUMN IF NOT EXISTS gp_target_t1 NUMERIC(12,2);
+
+-- CPF/Permit type: expand to cover all pass types
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_cpf_type_check;
+UPDATE users SET cpf_type = 'cpf' WHERE cpf_type IN ('local', 'pr');
+UPDATE users SET cpf_type = 'work_permit' WHERE cpf_type = 'foreign';
+ALTER TABLE users ADD CONSTRAINT users_cpf_type_check CHECK (cpf_type IN ('cpf', 'work_permit', 's_pass', 'e_pass'));
+
 CREATE INDEX IF NOT EXISTS idx_projects_assigned_to ON projects(assigned_to);
 CREATE INDEX IF NOT EXISTS idx_projects_period ON projects(period_year, period_month);
 CREATE INDEX IF NOT EXISTS idx_clients_user_id ON clients(user_id);

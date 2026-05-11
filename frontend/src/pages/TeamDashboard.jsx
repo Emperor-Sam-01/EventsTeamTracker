@@ -1,7 +1,126 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
 import api from '../utils/api';
 import { formatCurrency, ROLE_LABELS, ROLE_COLORS, TIER_COLORS, monthName, getMonthYear } from '../utils/format';
+
+const MEETING_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function fmtWeekDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d + 'T12:00:00');
+  return `${dt.getDate()} ${MEETING_MONTHS[dt.getMonth()]}`;
+}
+
+function WeeklyOverview({ members }) {
+  const [meetings, setMeetings] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get('/meetings?limit=200')
+      .then(r => setMeetings(r.data))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const latestByUser = meetings.reduce((acc, m) => {
+    if (!acc[m.user_id] || m.week_start > acc[m.user_id].week_start) acc[m.user_id] = m;
+    return acc;
+  }, {});
+
+  const allWeeks = [...new Set(meetings.map(m => m.week_start))].sort().reverse().slice(0, 6);
+  const latestWeek = allWeeks[0];
+
+  if (loading) return <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-brand-600" /></div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">Weekly Meeting Submissions</h2>
+          {latestWeek && <p className="text-xs text-gray-500">Latest week: {fmtWeekDate(latestWeek)}</p>}
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs text-gray-500 uppercase border-b bg-gray-50">
+              <th className="text-left py-3 px-4">Member</th>
+              <th className="text-left py-3 px-4">Last Submitted</th>
+              <th className="text-right py-3 px-4">Current Clients</th>
+              <th className="text-right py-3 px-4">Pipeline</th>
+              <th className="text-right py-3 px-4">Prospects</th>
+              <th className="text-right py-3 px-4">Emails</th>
+              <th className="text-right py-3 px-4">Proposals</th>
+              <th className="text-left py-3 px-4">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {members.map(member => {
+              const m = latestByUser[member.id];
+              const submittedThisWeek = m && latestWeek && m.week_start === latestWeek;
+              const hasSubmitted = !!m;
+              return (
+                <tr key={member.id} className="hover:bg-gray-50">
+                  <td className="py-3 px-4">
+                    <div className="font-medium text-gray-900">{member.name}</div>
+                    <span className={`badge ${ROLE_COLORS[member.role]} mt-0.5`}>{member.role.toUpperCase()}</span>
+                  </td>
+                  <td className="py-3 px-4 text-gray-500">{m ? fmtWeekDate(m.week_start) : '—'}</td>
+                  <td className="py-3 px-4 text-right font-medium">{m ? m.existing_clients_count : '—'}</td>
+                  <td className="py-3 px-4 text-right text-blue-600 font-medium">{m ? m.potential_clients_count : '—'}</td>
+                  <td className="py-3 px-4 text-right text-purple-600 font-medium">{m ? (m.prospect_count ?? '—') : '—'}</td>
+                  <td className="py-3 px-4 text-right">
+                    {m ? (
+                      <span className={m.cold_emails_actual >= m.cold_emails_target ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}>
+                        {m.cold_emails_actual}/{m.cold_emails_target}
+                      </span>
+                    ) : '—'}
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    {m ? (
+                      <span className={m.proposals_sent_actual >= m.proposals_sent_target ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}>
+                        {m.proposals_sent_actual}/{m.proposals_sent_target}
+                      </span>
+                    ) : '—'}
+                  </td>
+                  <td className="py-3 px-4">
+                    {!hasSubmitted ? (
+                      <span className="badge bg-gray-100 text-gray-500">No submissions</span>
+                    ) : submittedThisWeek ? (
+                      <span className="badge bg-green-100 text-green-700">This week</span>
+                    ) : (
+                      <span className="badge bg-amber-100 text-amber-700">Overdue</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Capacity summary */}
+      <div className="grid grid-cols-3 gap-3 text-sm">
+        {(() => {
+          const submitted = members.filter(m => latestByUser[m.id]?.week_start === latestWeek).length;
+          const overdue = members.filter(m => latestByUser[m.id] && latestByUser[m.id].week_start !== latestWeek).length;
+          const none = members.filter(m => !latestByUser[m.id]).length;
+          return [
+            { label: 'Submitted this week', val: submitted, color: 'text-green-600' },
+            { label: 'Overdue', val: overdue, color: 'text-amber-600' },
+            { label: 'Never submitted', val: none, color: 'text-gray-400' },
+          ].map(s => (
+            <div key={s.label} className="card text-center py-3">
+              <div className={`text-2xl font-bold ${s.color}`}>{s.val}</div>
+              <div className="text-xs text-gray-500 mt-0.5">{s.label}</div>
+            </div>
+          ));
+        })()}
+      </div>
+    </div>
+  );
+}
 
 const TIER_LABEL = { 0: 'Below T1', 1: 'Tier 1', 2: 'Tier 2', 3: 'Tier 3' };
 
@@ -21,6 +140,7 @@ export default function TeamDashboard() {
   const { month, year } = getMonthYear();
   const [period, setPeriod] = useState({ month, year });
   const [selected, setSelected] = useState(null);
+  const [tab, setTab] = useState('gp');
 
   useEffect(() => {
     setLoading(true);
@@ -59,6 +179,23 @@ export default function TeamDashboard() {
           </select>
         </div>
       </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {[{ id: 'gp', label: 'GP Overview' }, { id: 'weekly', label: 'Weekly Meetings' }].map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t.id ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'weekly' && <WeeklyOverview members={members} />}
+
+      {tab === 'gp' && <>
 
       {/* Team KPI Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -194,6 +331,8 @@ export default function TeamDashboard() {
           </div>
         </div>
       )}
+
+      </>}
     </div>
   );
 }
