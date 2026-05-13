@@ -108,7 +108,8 @@ ALTER TABLE sales_effort ADD COLUMN IF NOT EXISTS prospect_count INTEGER NOT NUL
 
 -- Clients: lost category and loss reason
 ALTER TABLE clients DROP CONSTRAINT IF EXISTS clients_list_type_check;
-ALTER TABLE clients ADD CONSTRAINT clients_list_type_check CHECK (list_type IN ('current', 'pipeline', 'prospect', 'lost'));
+ALTER TABLE clients DROP CONSTRAINT IF EXISTS clients_list_type_check;
+ALTER TABLE clients ADD CONSTRAINT clients_list_type_check CHECK (list_type IN ('current', 'pipeline', 'prospect', 'lost', 'completed'));
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS loss_reason TEXT;
 
 -- Projects: cancellation reason

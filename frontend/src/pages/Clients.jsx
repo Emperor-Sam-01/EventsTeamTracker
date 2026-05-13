@@ -34,10 +34,22 @@ function calcTargets(role, tier, tenureMonths, existingCount, potentialCount) {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const LIST_TYPES  = ['current','pipeline','prospect','lost'];
-const LIST_LABELS = { current:'Current Clients', pipeline:'Pipeline', prospect:'Prospects', lost:'Lost' };
-const LIST_COLORS = { current:'bg-teal-50 border-teal-200', pipeline:'bg-brand-50 border-brand-200', prospect:'bg-purple-50 border-purple-200', lost:'bg-gray-50 border-gray-300' };
-const LIST_BADGE  = { current:'bg-teal-100 text-teal-700', pipeline:'bg-brand-100 text-brand-700', prospect:'bg-purple-100 text-purple-700', lost:'bg-gray-200 text-gray-600' };
+const LIST_TYPES  = ['current','pipeline','prospect','lost','completed'];
+const LIST_LABELS = { current:'Current Clients', pipeline:'Pipeline', prospect:'Prospects', lost:'Lost', completed:'Completed' };
+const LIST_COLORS = {
+  current:   'bg-teal-50 border-teal-200',
+  pipeline:  'bg-brand-50 border-brand-200',
+  prospect:  'bg-purple-50 border-purple-200',
+  lost:      'bg-gray-50 border-gray-300',
+  completed: 'bg-green-50 border-green-200',
+};
+const LIST_BADGE  = {
+  current:   'bg-teal-100 text-teal-700',
+  pipeline:  'bg-brand-100 text-brand-700',
+  prospect:  'bg-purple-100 text-purple-700',
+  lost:      'bg-gray-200 text-gray-600',
+  completed: 'bg-green-100 text-green-700',
+};
 
 const EMPTY_CLIENT = {
   company_name:'', project_name:'', project_type:'',
@@ -46,7 +58,6 @@ const EMPTY_CLIENT = {
   estimated_revenue:'', estimated_gp:'', google_link:'', notes:'',
 };
 
-// Returns last Monday (the week being reported on)
 function getLastMonday() {
   const d = new Date();
   const day = d.getDay();
@@ -58,14 +69,12 @@ function getLastMonday() {
   return lastMonday.toISOString().split('T')[0];
 }
 
-// Format date string as "4 May 2026" safely (noon avoids TZ shift)
 function fmtDate(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr + 'T12:00:00');
   return d.toLocaleDateString('en-SG', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-// Format date string as "4 May" (short)
 function fmtShort(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr + 'T12:00:00');
@@ -316,7 +325,7 @@ function ConvertModal({ client, onSave, onClose }) {
   const [error, setError]   = useState('');
 
   useEffect(() => {
-    api.get('/users').then(r => setAllUsers(r.data.filter(u => u.is_active && u.role !== 'pa'))).catch(console.error);
+    api.get('/users').then(r => setAllUsers(r.data.filter(u => u.is_active !== false && u.role !== 'exec_pa'))).catch(console.error);
   }, []);
 
   const gp = (parseFloat(form.revenue)||0) - (parseFloat(form.cost)||0);
@@ -404,7 +413,6 @@ function ConvertModal({ client, onSave, onClose }) {
             <span className={`text-lg font-bold ${gp>=0?'text-green-600':'text-red-600'}`}>{formatCurrency(gp)}</span>
           </div>
 
-          {/* GP Distribution */}
           <div className="border border-gray-200 rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
@@ -519,16 +527,14 @@ function WeeklyMeetingSection({ clientCounts }) {
     <div className="space-y-5">
       <div>
         <h2 className="text-base font-semibold text-gray-900">Weekly Meeting</h2>
-        <p className="text-xs text-gray-500 mt-0.5">
-          Reporting actuals for week of {fmtDate(weekStart)}
-        </p>
+        <p className="text-xs text-gray-500 mt-0.5">Reporting actuals for week of {fmtDate(weekStart)}</p>
       </div>
       {hasNoTargets ? (
         <div className="card text-sm text-gray-500 text-center py-6">Weekly effort tracking is for BD and Project team members.</div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="card">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Client Load This Week</h3>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">My Client Load This Week</h3>
             <div className="grid grid-cols-3 gap-3 text-center">
               {[{label:'Current',val:clientCounts.current,color:'text-teal-700'},{label:'Pipeline',val:clientCounts.pipeline,color:'text-brand-600'},{label:'Prospects',val:clientCounts.prospect,color:'text-purple-700'}].map(c=>(
                 <div key={c.label}><div className={`text-2xl font-bold ${c.color}`}>{c.val}</div><div className="text-xs text-gray-500">{c.label}</div></div>
@@ -576,9 +582,7 @@ function WeeklyMeetingSection({ clientCounts }) {
             {history.map(m=>(
               <details key={m.id} className="border border-gray-100 rounded-xl overflow-hidden">
                 <summary className="flex items-center justify-between px-4 py-3 cursor-pointer bg-gray-50 hover:bg-gray-100 list-none">
-                  <span className="text-sm font-medium text-gray-800">
-                    Week of {fmtShort(m.week_start)}
-                  </span>
+                  <span className="text-sm font-medium text-gray-800">Week of {fmtShort(m.week_start)}</span>
                   <span className="text-xs text-gray-400">▼</span>
                 </summary>
                 <div className="px-4 pb-4 pt-3 space-y-3">
@@ -634,8 +638,10 @@ function WeeklyMeetingSection({ clientCounts }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function Clients() {
   const { user } = useAuth();
+  const isBDM = ['bdm', 'exec_pa'].includes(user.role);
   const [tab, setTab]           = useState('clients');
   const [clients, setClients]   = useState([]);
+  const [teamUsers, setTeamUsers] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [showModal, setShowModal]             = useState(false);
   const [showConvert, setShowConvert]         = useState(false);
@@ -643,20 +649,34 @@ export default function Clients() {
   const [showConvertLost, setShowConvertLost] = useState(false);
   const [editing, setEditing]                 = useState(null);
   const [converting, setConverting]           = useState(null);
-  const [listFilter, setListFilter]           = useState('');
+  const [userFilter, setUserFilter]           = useState('');
 
   const load = useCallback(() => {
     setLoading(true);
-    api.get(listFilter ? `/clients?list_type=${listFilter}` : '/clients')
+    const params = userFilter ? `?user_id=${userFilter}` : '';
+    api.get(`/clients${params}`)
       .then(r => setClients(r.data))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [listFilter]);
+  }, [userFilter]);
 
   useEffect(load, [load]);
 
+  useEffect(() => {
+    api.get('/users')
+      .then(r => setTeamUsers(r.data.filter(u => u.is_active !== false && u.role !== 'exec_pa')))
+      .catch(console.error);
+  }, []);
+
   const grouped = LIST_TYPES.reduce((acc,t) => { acc[t]=clients.filter(c=>c.list_type===t); return acc; }, {});
-  const clientCounts = { current: grouped.current.length, pipeline: grouped.pipeline.length, prospect: grouped.prospect.length };
+
+  // Client counts for weekly meeting based on OWN clients only
+  const ownClients = clients.filter(c => c.user_id === user.id);
+  const clientCounts = {
+    current:  ownClients.filter(c => c.list_type === 'current').length,
+    pipeline: ownClients.filter(c => c.list_type === 'pipeline').length,
+    prospect: ownClients.filter(c => c.list_type === 'prospect').length,
+  };
 
   return (
     <div className="space-y-5">
@@ -678,100 +698,115 @@ export default function Clients() {
 
       {tab==='clients' && (
         <>
-          <div className="flex gap-2 flex-wrap">
-            <button onClick={()=>setListFilter('')} className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${!listFilter?'bg-brand-600 text-white border-brand-600':'text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-              All ({clients.length})
-            </button>
-            {LIST_TYPES.map(t=>(
-              <button key={t} onClick={()=>setListFilter(t)} className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${listFilter===t?'bg-brand-600 text-white border-brand-600':'text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                {LIST_LABELS[t]} ({grouped[t]?.length||0})
-              </button>
-            ))}
+          {/* User filter */}
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600 font-medium">Filter by member:</label>
+            <select
+              className="input w-auto text-sm"
+              value={userFilter}
+              onChange={e => setUserFilter(e.target.value)}
+            >
+              <option value="">All Members ({clients.length})</option>
+              {teamUsers.map(u => (
+                <option key={u.id} value={u.id}>
+                  {u.name} ({u.role.toUpperCase()})
+                </option>
+              ))}
+            </select>
           </div>
 
           {loading ? (
             <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" /></div>
           ) : (
-            <div className="grid md:grid-cols-4 gap-4">
-              {LIST_TYPES.filter(t=>!listFilter||listFilter===t).map(type=>(
-                <div key={type} className={`border rounded-xl p-4 ${LIST_COLORS[type]}`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-sm font-semibold text-gray-800">{LIST_LABELS[type]}</h2>
-                    <span className={`badge ${LIST_BADGE[type]}`}>{grouped[type].length}</span>
+            <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4">
+              {LIST_TYPES.map(type => {
+                const cols = grouped[type] || [];
+                return (
+                  <div key={type} className={`border rounded-xl p-4 ${LIST_COLORS[type]}`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <h2 className="text-sm font-semibold text-gray-800">{LIST_LABELS[type]}</h2>
+                      <span className={`badge ${LIST_BADGE[type]}`}>{cols.length}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {cols.length===0 && <div className="text-xs text-gray-400 text-center py-4">No entries</div>}
+                      {cols.map(c => {
+                        const canInteract = isBDM || c.user_id === user.id;
+                        return (
+                          <div key={c.id} className="bg-white rounded-lg p-3 shadow-sm">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-gray-900 truncate">{c.company_name}</div>
+                                {c.project_name && <div className="text-xs text-brand-600 truncate">{c.project_name}</div>}
+                                {c.project_type && <div className="text-xs text-gray-400">{c.project_type}</div>}
+                              </div>
+                              {canInteract && ['prospect','pipeline'].includes(type) && (
+                                <button onClick={()=>{setEditing(c);setShowModal(true);}} className="text-xs text-brand-600 hover:underline shrink-0">Edit</button>
+                              )}
+                            </div>
+                            {c.contact_name && <div className="text-xs text-gray-600 mt-1">👤 {c.contact_name}{c.contact_details && ` · ${c.contact_details}`}</div>}
+                            {c.event_date && <div className="text-xs text-gray-500 mt-0.5">📅 {fmtDate(c.event_date)}</div>}
+                            {(c.estimated_revenue||c.estimated_gp) && (
+                              <div className="text-xs mt-0.5">
+                                {c.estimated_revenue && <span className="text-gray-500">Rev: {formatCurrency(c.estimated_revenue)} </span>}
+                                {c.estimated_gp && <span className="text-gray-600">Cost: {formatCurrency(c.estimated_gp)}</span>}
+                              </div>
+                            )}
+                            {c.google_link && (
+                              <div className="text-xs mt-0.5">
+                                {/^https?:\/\//i.test(c.google_link)
+                                  ? <a href={c.google_link} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">📎 Drive Link ↗</a>
+                                  : <span className="text-gray-500">📎 {c.google_link}</span>
+                                }
+                              </div>
+                            )}
+                            {c.loss_reason && <div className="text-xs text-red-600 mt-1 bg-red-50 rounded px-2 py-1">Reason: {c.loss_reason}</div>}
+                            {c.notes && <div className="text-xs text-gray-400 mt-1 italic line-clamp-2">{c.notes}</div>}
+                            {c.member_name && (
+                              <div className="text-xs text-brand-600 mt-1 font-medium">{c.member_name}</div>
+                            )}
+
+                            {/* Prospect actions — own clients only */}
+                            {canInteract && type === 'prospect' && (
+                              <button
+                                onClick={()=>{setConverting(c);setShowConvertPipeline(true);}}
+                                className="mt-2 w-full text-xs bg-purple-600 hover:bg-purple-700 text-white rounded-md py-1.5 font-medium transition-colors"
+                              >
+                                → Move to Pipeline
+                              </button>
+                            )}
+
+                            {/* Pipeline actions — own clients only */}
+                            {canInteract && type === 'pipeline' && (
+                              <div className="mt-2 space-y-1.5">
+                                <button
+                                  onClick={()=>{setConverting(c);setShowConvert(true);}}
+                                  className="w-full text-xs bg-brand-600 hover:bg-brand-700 text-white rounded-md py-1.5 font-medium transition-colors"
+                                >
+                                  ✓ Convert to Current Client
+                                </button>
+                                <button
+                                  onClick={()=>{setConverting(c);setShowConvertLost(true);}}
+                                  className="w-full text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded-md py-1.5 font-medium transition-colors"
+                                >
+                                  ✕ Mark as Lost
+                                </button>
+                              </div>
+                            )}
+
+                            {type === 'current' && (
+                              <div className="mt-2 text-xs text-gray-400 text-center italic">Manage in Projects tab</div>
+                            )}
+
+                            {type === 'completed' && (
+                              <div className="mt-2 text-xs text-green-600 text-center font-medium">✓ Project completed</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    {grouped[type].length===0 && <div className="text-xs text-gray-400 text-center py-4">No entries</div>}
-                    {grouped[type].map(c=>(
-                      <div key={c.id} className="bg-white rounded-lg p-3 shadow-sm">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-gray-900 truncate">{c.company_name}</div>
-                            {c.project_name && <div className="text-xs text-brand-600 truncate">{c.project_name}</div>}
-                            {c.project_type && <div className="text-xs text-gray-400">{c.project_type}</div>}
-                          </div>
-                          {/* Edit only for prospect/pipeline */}
-                          {['prospect','pipeline'].includes(type) && (
-                            <button onClick={()=>{setEditing(c);setShowModal(true);}} className="text-xs text-brand-600 hover:underline shrink-0">Edit</button>
-                          )}
-                        </div>
-                        {c.contact_name && <div className="text-xs text-gray-600 mt-1">👤 {c.contact_name}{c.contact_details && ` · ${c.contact_details}`}</div>}
-                        {c.event_date && <div className="text-xs text-gray-500 mt-0.5">📅 {fmtDate(c.event_date)}</div>}
-                        {(c.estimated_revenue||c.estimated_gp) && (
-                          <div className="text-xs mt-0.5">
-                            {c.estimated_revenue && <span className="text-gray-500">Rev: {formatCurrency(c.estimated_revenue)} </span>}
-                            {c.estimated_gp && <span className="text-gray-600">Cost: {formatCurrency(c.estimated_gp)}</span>}
-                          </div>
-                        )}
-                        {c.google_link && (
-                          <div className="text-xs mt-0.5">
-                            {/^https?:\/\//i.test(c.google_link)
-                              ? <a href={c.google_link} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">📎 Drive Link ↗</a>
-                              : <span className="text-gray-500">📎 {c.google_link}</span>
-                            }
-                          </div>
-                        )}
-                        {c.loss_reason && <div className="text-xs text-red-600 mt-1 bg-red-50 rounded px-2 py-1">Reason: {c.loss_reason}</div>}
-                        {c.notes && <div className="text-xs text-gray-400 mt-1 italic line-clamp-2">{c.notes}</div>}
-                        {['bdm','exec_pa'].includes(user.role) && c.member_name && (
-                          <div className="text-xs text-brand-600 mt-1 font-medium">{c.member_name}</div>
-                        )}
-
-                        {/* Prospect actions */}
-                        {type === 'prospect' && (
-                          <button
-                            onClick={()=>{setConverting(c);setShowConvertPipeline(true);}}
-                            className="mt-2 w-full text-xs bg-purple-600 hover:bg-purple-700 text-white rounded-md py-1.5 font-medium transition-colors"
-                          >
-                            → Move to Pipeline
-                          </button>
-                        )}
-
-                        {/* Pipeline actions */}
-                        {type === 'pipeline' && (
-                          <div className="mt-2 space-y-1.5">
-                            <button
-                              onClick={()=>{setConverting(c);setShowConvert(true);}}
-                              className="w-full text-xs bg-brand-600 hover:bg-brand-700 text-white rounded-md py-1.5 font-medium transition-colors"
-                            >
-                              ✓ Convert to Current Client
-                            </button>
-                            <button
-                              onClick={()=>{setConverting(c);setShowConvertLost(true);}}
-                              className="w-full text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded-md py-1.5 font-medium transition-colors"
-                            >
-                              ✕ Mark as Lost
-                            </button>
-                          </div>
-                        )}
-
-                        {type === 'current' && (
-                          <div className="mt-2 text-xs text-gray-400 text-center italic">Manage in Projects tab</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>

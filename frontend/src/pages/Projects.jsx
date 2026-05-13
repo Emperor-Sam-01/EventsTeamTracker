@@ -60,7 +60,7 @@ function ProjectModal({ project, onSave, onClose }) {
 
   useEffect(() => {
     api.get('/users').then(r => {
-      const list = r.data;
+      const list = r.data.filter(u => u.is_active !== false && u.role !== 'exec_pa');
       setUsers(list);
 
       if (project?.crew && project.crew.length > 0) {

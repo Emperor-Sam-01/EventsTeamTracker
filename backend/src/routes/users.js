@@ -6,19 +6,26 @@ const { getTenureMonths, getAssistantMultiplier } = require('../utils/kpi');
 
 const router = express.Router();
 
-// List all users (BDM only)
-router.get('/', authenticate, requireBDM, async (req, res) => {
+// List users — BDM/exec_pa get full detail; others get lightweight list for crew/filter use
+router.get('/', authenticate, async (req, res) => {
+  const isBDM = ['bdm', 'exec_pa'].includes(req.user.role);
   try {
-    const { rows } = await pool.query(
-      `SELECT id, name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, is_active, created_at
-       FROM users ORDER BY name`
-    );
-    const users = rows.map((u) => ({
-      ...u,
-      tenure_months: getTenureMonths(u.join_date),
-      multiplier: ['bda', 'pa'].includes(u.role) ? getAssistantMultiplier(getTenureMonths(u.join_date)) : 1,
-    }));
-    res.json(users);
+    if (isBDM) {
+      const { rows } = await pool.query(
+        `SELECT id, name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, is_active, created_at
+         FROM users ORDER BY name`
+      );
+      res.json(rows.map(u => ({
+        ...u,
+        tenure_months: getTenureMonths(u.join_date),
+        multiplier: ['bda', 'pa'].includes(u.role) ? getAssistantMultiplier(getTenureMonths(u.join_date)) : 1,
+      })));
+    } else {
+      const { rows } = await pool.query(
+        `SELECT id, name, role, is_active FROM users WHERE is_active = TRUE AND role != 'exec_pa' ORDER BY name`
+      );
+      res.json(rows);
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

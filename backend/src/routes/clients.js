@@ -12,10 +12,7 @@ router.get('/', authenticate, async (req, res) => {
   const conditions = [];
   const params = [];
 
-  if (!isBDM) {
-    params.push(req.user.id);
-    conditions.push(`c.user_id = $${params.length}`);
-  } else if (user_id) {
+  if (user_id) {
     params.push(parseInt(user_id));
     conditions.push(`c.user_id = $${params.length}`);
   }

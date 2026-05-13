@@ -21,7 +21,7 @@ async function saveCrew(client, projectId, crew, defaultLeadId) {
 router.get('/', authenticate, async (req, res) => {
   const { month, year, user_id, status } = req.query;
   const isBDM = ['bdm', 'exec_pa'].includes(req.user.role);
-  const filterUserId = isBDM && user_id ? parseInt(user_id) : (!isBDM ? req.user.id : null);
+  const filterUserId = user_id ? parseInt(user_id) : null;
 
   const conditions = [];
   const params = [];
@@ -150,11 +150,19 @@ router.put('/:id', authenticate, async (req, res) => {
 
     // Auto-deactivate matching current client when project completes or cancels
     if (['completed', 'cancelled'].includes(newStatus) && !['completed', 'cancelled'].includes(p.status)) {
-      await db.query(
-        `UPDATE clients SET is_active = FALSE, updated_at = NOW()
-         WHERE user_id = $1 AND company_name = $2 AND list_type = 'current' AND is_active = TRUE`,
-        [newAssignee, newClientName]
-      );
+      if (newStatus === 'completed') {
+        await db.query(
+          `UPDATE clients SET list_type = 'completed', updated_at = NOW()
+           WHERE user_id = $1 AND company_name = $2 AND list_type = 'current' AND is_active = TRUE`,
+          [newAssignee, newClientName]
+        );
+      } else {
+        await db.query(
+          `UPDATE clients SET is_active = FALSE, updated_at = NOW()
+           WHERE user_id = $1 AND company_name = $2 AND list_type = 'current' AND is_active = TRUE`,
+          [newAssignee, newClientName]
+        );
+      }
     }
 
     await db.query('COMMIT');
