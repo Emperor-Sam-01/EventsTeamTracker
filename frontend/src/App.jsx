@@ -8,6 +8,7 @@ import TeamDashboard from './pages/TeamDashboard';
 import Projects from './pages/Projects';
 import Clients from './pages/Clients';
 import TeamManagement from './pages/TeamManagement';
+import AdviceGuru from './pages/AdviceGuru';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -32,6 +33,7 @@ export default function App() {
             <Route path="projects" element={<Projects />} />
             <Route path="clients" element={<Clients />} />
             <Route path="team-management" element={<BDMRoute><TeamManagement /></BDMRoute>} />
+            <Route path="advice" element={<AdviceGuru />} />
           </Route>
         </Routes>
       </BrowserRouter>

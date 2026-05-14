@@ -147,6 +147,53 @@ CREATE INDEX IF NOT EXISTS idx_clients_user_id ON clients(user_id);
 CREATE INDEX IF NOT EXISTS idx_clients_list_type ON clients(list_type);
 CREATE INDEX IF NOT EXISTS idx_sales_effort_user_week ON sales_effort(user_id, week_start);
 CREATE INDEX IF NOT EXISTS idx_weekly_meetings_user_week ON weekly_meetings(user_id, week_start);
+
+-- Advice Guru: DISC personality profiles
+CREATE TABLE IF NOT EXISTS disc_profiles (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  d_score INTEGER NOT NULL DEFAULT 25,
+  i_score INTEGER NOT NULL DEFAULT 25,
+  s_score INTEGER NOT NULL DEFAULT 25,
+  c_score INTEGER NOT NULL DEFAULT 25,
+  dominant_type CHAR(1) NOT NULL DEFAULT 'D',
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id)
+);
+
+-- Advice Guru: Quarterly individual 1-1 reviews
+CREATE TABLE IF NOT EXISTS individual_reviews (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reviewer_id INTEGER NOT NULL REFERENCES users(id),
+  quarter INTEGER NOT NULL CHECK (quarter IN (1,2,3,4)),
+  year INTEGER NOT NULL,
+  answers JSONB NOT NULL DEFAULT '{}',
+  summary TEXT,
+  action_items TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id, quarter, year)
+);
+
+-- Advice Guru: Quarterly team reviews
+CREATE TABLE IF NOT EXISTS team_reviews (
+  id SERIAL PRIMARY KEY,
+  quarter INTEGER NOT NULL CHECK (quarter IN (1,2,3,4)),
+  year INTEGER NOT NULL,
+  total_gp NUMERIC(12,2) DEFAULT 0,
+  total_projects INTEGER DEFAULT 0,
+  total_prospects INTEGER DEFAULT 0,
+  total_pipeline INTEGER DEFAULT 0,
+  highlights TEXT,
+  challenges TEXT,
+  action_items TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(quarter, year)
+);
 `;
 
 async function migrate() {

@@ -7,6 +7,7 @@ const navItems = [
   { to: '/', label: 'My Dashboard', icon: '📊', exact: true },
   { to: '/projects', label: 'Projects', icon: '📁' },
   { to: '/clients', label: 'Clients & Activity', icon: '👥' },
+  { to: '/advice', label: 'Advice Guru', icon: '🧠' },
 ];
 
 const bdmItems = [
