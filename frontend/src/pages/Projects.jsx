@@ -391,6 +391,17 @@ export default function Projects() {
     .filter(p => ['confirmed', 'completed'].includes(p.status))
     .reduce((s, p) => s + parseFloat(p.gp || 0), 0);
 
+  const personalGP = projects
+    .filter(p => ['confirmed', 'completed'].includes(p.status))
+    .reduce((s, p) => {
+      if (p.crew && p.crew.length > 0) {
+        const me = p.crew.find(c => c.user_id === user.id);
+        return s + parseFloat(me?.gp_allocated || 0);
+      }
+      if (p.assigned_to === user.id) return s + parseFloat(p.gp || 0);
+      return s;
+    }, 0);
+
   const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-SG', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
   return (
@@ -419,8 +430,13 @@ export default function Projects() {
         >
           {hideEnded ? 'Showing active only' : 'Hide completed & cancelled'}
         </button>
-        <div className="ml-auto text-sm font-semibold text-gray-700">
-          Total GP: <span className="text-green-600">{formatCurrency(totalGP)}</span>
+        <div className="ml-auto text-right space-y-0.5">
+          <div className="text-sm font-semibold text-gray-700">
+            Total GP: <span className="text-green-600">{formatCurrency(totalGP)}</span>
+          </div>
+          <div className="text-xs text-gray-500">
+            My GP: <span className="font-semibold text-brand-600">{formatCurrency(personalGP)}</span>
+          </div>
         </div>
       </div>
 

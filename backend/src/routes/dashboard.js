@@ -28,12 +28,18 @@ router.get('/individual/:userId', authenticate, async (req, res) => {
     const multiplier = ['bda', 'pa'].includes(user.role) ? getAssistantMultiplier(tenureMonths) : 1;
 
     // GP with crew distribution: own projects without crew + crew-allocated GP
+    // Bucketed by event_date (falling back to confirmation_date)
     const { rows: projectRows } = await pool.query(
-      `SELECT p.gp, p.period_month, p.period_year FROM projects p
+      `SELECT p.gp,
+          EXTRACT(MONTH FROM COALESCE(p.event_date, p.confirmation_date))::int AS period_month,
+          EXTRACT(YEAR  FROM COALESCE(p.event_date, p.confirmation_date))::int AS period_year
+       FROM projects p
        WHERE p.assigned_to = $1 AND p.status IN ('confirmed','completed')
          AND NOT EXISTS (SELECT 1 FROM project_crew pc WHERE pc.project_id = p.id)
        UNION ALL
-       SELECT pc.gp_allocated AS gp, p.period_month, p.period_year
+       SELECT pc.gp_allocated AS gp,
+          EXTRACT(MONTH FROM COALESCE(p.event_date, p.confirmation_date))::int AS period_month,
+          EXTRACT(YEAR  FROM COALESCE(p.event_date, p.confirmation_date))::int AS period_year
        FROM project_crew pc JOIN projects p ON p.id = pc.project_id
        WHERE pc.user_id = $1 AND p.status IN ('confirmed','completed')`,
       [targetId]
@@ -145,15 +151,22 @@ router.get('/team', authenticate, requireBDM, async (req, res) => {
        FROM users WHERE is_active = TRUE AND role != 'exec_pa' ORDER BY name`
     );
 
-    // GP with crew distribution for team view
+    // GP with crew distribution for team view, bucketed by event_date
     const { rows: projects } = await pool.query(
-      `SELECT p.assigned_to AS user_id, p.gp, p.period_month, p.period_year FROM projects p
-       WHERE p.status IN ('confirmed','completed') AND p.period_year = $1
+      `SELECT p.assigned_to AS user_id, p.gp,
+          EXTRACT(MONTH FROM COALESCE(p.event_date, p.confirmation_date))::int AS period_month,
+          EXTRACT(YEAR  FROM COALESCE(p.event_date, p.confirmation_date))::int AS period_year
+       FROM projects p
+       WHERE p.status IN ('confirmed','completed')
+         AND EXTRACT(YEAR FROM COALESCE(p.event_date, p.confirmation_date)) = $1
          AND NOT EXISTS (SELECT 1 FROM project_crew pc WHERE pc.project_id = p.id)
        UNION ALL
-       SELECT pc.user_id, pc.gp_allocated AS gp, p.period_month, p.period_year
+       SELECT pc.user_id, pc.gp_allocated AS gp,
+          EXTRACT(MONTH FROM COALESCE(p.event_date, p.confirmation_date))::int AS period_month,
+          EXTRACT(YEAR  FROM COALESCE(p.event_date, p.confirmation_date))::int AS period_year
        FROM project_crew pc JOIN projects p ON p.id = pc.project_id
-       WHERE p.status IN ('confirmed','completed') AND p.period_year = $1`,
+       WHERE p.status IN ('confirmed','completed')
+         AND EXTRACT(YEAR FROM COALESCE(p.event_date, p.confirmation_date)) = $1`,
       [y]
     );
 
@@ -295,11 +308,16 @@ router.get('/benchmarks', authenticate, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `WITH crew_gp AS (
-        SELECT p.assigned_to AS user_id, p.gp, p.period_month, p.period_year FROM projects p
+        SELECT p.assigned_to AS user_id, p.gp,
+          EXTRACT(MONTH FROM COALESCE(p.event_date, p.confirmation_date))::int AS period_month,
+          EXTRACT(YEAR  FROM COALESCE(p.event_date, p.confirmation_date))::int AS period_year
+        FROM projects p
         WHERE p.status IN ('confirmed','completed')
           AND NOT EXISTS (SELECT 1 FROM project_crew pc WHERE pc.project_id = p.id)
         UNION ALL
-        SELECT pc.user_id, pc.gp_allocated AS gp, p.period_month, p.period_year
+        SELECT pc.user_id, pc.gp_allocated AS gp,
+          EXTRACT(MONTH FROM COALESCE(p.event_date, p.confirmation_date))::int AS period_month,
+          EXTRACT(YEAR  FROM COALESCE(p.event_date, p.confirmation_date))::int AS period_year
         FROM project_crew pc JOIN projects p ON p.id = pc.project_id
         WHERE p.status IN ('confirmed','completed')
       )
@@ -342,11 +360,16 @@ router.get('/benchmarks-trend', authenticate, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `WITH crew_gp AS (
-        SELECT p.assigned_to AS user_id, p.gp, p.period_month, p.period_year FROM projects p
+        SELECT p.assigned_to AS user_id, p.gp,
+          EXTRACT(MONTH FROM COALESCE(p.event_date, p.confirmation_date))::int AS period_month,
+          EXTRACT(YEAR  FROM COALESCE(p.event_date, p.confirmation_date))::int AS period_year
+        FROM projects p
         WHERE p.status IN ('confirmed','completed')
           AND NOT EXISTS (SELECT 1 FROM project_crew pc WHERE pc.project_id = p.id)
         UNION ALL
-        SELECT pc.user_id, pc.gp_allocated AS gp, p.period_month, p.period_year
+        SELECT pc.user_id, pc.gp_allocated AS gp,
+          EXTRACT(MONTH FROM COALESCE(p.event_date, p.confirmation_date))::int AS period_month,
+          EXTRACT(YEAR  FROM COALESCE(p.event_date, p.confirmation_date))::int AS period_year
         FROM project_crew pc JOIN projects p ON p.id = pc.project_id
         WHERE p.status IN ('confirmed','completed')
       ),
