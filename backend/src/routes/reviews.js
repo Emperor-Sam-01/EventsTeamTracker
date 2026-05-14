@@ -1,68 +1,80 @@
 const express = require('express');
 const pool = require('../config/database');
 const { authenticate, requireBDM } = require('../middleware/auth');
-const Anthropic = require('@anthropic-ai/sdk');
 const router = express.Router();
 
 const REVIEW_QUESTIONS = [
-  'Have you achieved the goals set during your last catch-up? If not, what got in the way?',
-  'Give yourself an overall performance rating from 1 to 10.',
+  'Have you achieved the goals set during your last catch-up?',
+  'Overall performance rating (1–10)',
   'Tell us more about your score.',
-  'Is there anything you\'re currently doing — or planning to start — that would push that rating higher next quarter?',
-  'Is there anything the management team can do to better support you?',
-  'Set at least 2 new goals for the coming quarter.',
-  'How are you planning to make meaningful progress on these goals?',
-  'Is there anything else you\'d like to raise, flag, or discuss?',
+  'What would push that rating higher next quarter?',
+  'What can management do to better support you?',
+  'New goals for the coming quarter.',
+  'How are you planning to make progress on these goals?',
+  'Anything else to raise or discuss?',
 ];
 
-// Auto-generate summary and action items from review answers (BDM only)
-router.post('/generate', authenticate, requireBDM, async (req, res) => {
-  const { answers, memberName } = req.body;
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return res.status(503).json({ error: 'ANTHROPIC_API_KEY is not set in your backend .env file.' });
+function generateLocally(answers, memberName) {
+  const name = memberName ? memberName.split(' ')[0] : 'The team member';
+  const rating = parseInt(answers[1]);
+  const hasRating = !isNaN(rating) && rating >= 1 && rating <= 10;
+
+  const ratingPhrase = !hasRating ? 'no rating provided'
+    : rating >= 9 ? 'an outstanding self-rating of ' + rating + '/10'
+    : rating >= 7 ? 'a strong self-rating of ' + rating + '/10'
+    : rating >= 5 ? 'a moderate self-rating of ' + rating + '/10'
+    : 'a low self-rating of ' + rating + '/10, indicating areas for improvement';
+
+  const sentimentNote = !hasRating ? ''
+    : rating >= 8 ? `${name} expressed confidence in their performance this quarter.`
+    : rating >= 5 ? `${name} sees room for growth and is working on improving their results.`
+    : `${name} acknowledged challenges this quarter and is seeking support to get back on track.`;
+
+  const goalsSnippet = answers[5] ? `Goals set for next quarter include: ${answers[5].trim().split('\n')[0]}.` : '';
+  const mgmtNote = answers[4] ? `Management support was requested around: ${answers[4].trim().split('\n')[0]}.` : '';
+  const othersNote = answers[7] ? `Additional points were raised: ${answers[7].trim().split('\n')[0]}.` : '';
+
+  const summary = [
+    `${name} completed their quarterly 1-1 catch-up with ${ratingPhrase}.`,
+    sentimentNote,
+    goalsSnippet,
+    mgmtNote || othersNote,
+  ].filter(Boolean).join(' ');
+
+  const actionItems = [];
+
+  if (hasRating && rating < 7) {
+    actionItems.push(`– Follow up with ${name} in 4 weeks to check progress and provide additional support`);
   }
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  if (answers[3]) {
+    actionItems.push(`– ${name} to action: ${answers[3].trim().split('\n')[0]}`);
+  }
+  if (answers[5]) {
+    const goalLines = answers[5].trim().split('\n').filter(Boolean).slice(0, 2);
+    goalLines.forEach(g => actionItems.push(`– ${name} to work towards goal: ${g.replace(/^[-–•]\s*/, '')}`));
+  }
+  if (answers[6]) {
+    actionItems.push(`– ${name} to follow through on plan: ${answers[6].trim().split('\n')[0]}`);
+  }
+  if (answers[4]) {
+    actionItems.push(`– Management to follow up on: ${answers[4].trim().split('\n')[0]}`);
+  }
+  if (actionItems.length === 0) {
+    actionItems.push(`– Schedule next catch-up for following quarter`);
+    actionItems.push(`– Review progress on goals set in this session`);
+  }
 
-  const qa = Object.entries(answers || {})
-    .filter(([, v]) => v && String(v).trim())
-    .map(([i, v]) => `Q${parseInt(i)+1}. ${REVIEW_QUESTIONS[i] || ''}\nAnswer: ${v}`)
-    .join('\n\n');
+  return { summary, action_items: actionItems.join('\n') };
+}
 
-  const prompt = `You are a team manager reviewing a quarterly 1-1 catch-up session with ${memberName || 'a team member'}.
-
-Below are the questions and their answers from the session:
-
-${qa}
-
-Please produce two things:
-1. A concise session SUMMARY (2–4 sentences) capturing the key themes, performance sentiment, and any notable points raised.
-2. A bullet-point ACTION ITEMS list (3–6 items) of concrete next steps for ${memberName || 'the team member'} and/or management, derived directly from the answers. Each item should start with a dash (–).
-
-Respond in this exact format:
-SUMMARY:
-<summary text>
-
-ACTION ITEMS:
-– <item 1>
-– <item 2>
-...`;
-
+// Auto-generate summary and action items from review answers (BDM only)
+router.post('/generate', authenticate, requireBDM, (req, res) => {
+  const { answers, memberName } = req.body;
   try {
-    const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 600,
-      messages: [{ role: 'user', content: prompt }],
-    });
-    const text = message.content[0]?.text || '';
-    const summaryMatch = text.match(/SUMMARY:\s*([\s\S]*?)(?=ACTION ITEMS:|$)/i);
-    const actionsMatch = text.match(/ACTION ITEMS:\s*([\s\S]*)/i);
-    res.json({
-      summary: (summaryMatch?.[1] || '').trim(),
-      action_items: (actionsMatch?.[1] || '').trim(),
-    });
+    const result = generateLocally(answers || {}, memberName || '');
+    res.json(result);
   } catch (err) {
-    console.error('Claude API error:', err.message);
-    res.status(500).json({ error: 'Failed to generate summary. Check your API key and try again.' });
+    res.status(500).json({ error: 'Failed to generate summary.' });
   }
 });
 

@@ -569,7 +569,7 @@ function GenerateSummaryBlock({ answers, memberName, summary, actionItems, onGen
         <div className="text-xs text-gray-500">Summary & action items are auto-generated from the answers above.</div>
         <button type="button" onClick={generate} disabled={generating}
           className="btn-primary text-sm flex items-center gap-1.5">
-          {generating ? '⏳ Generating…' : '✨ Generate Summary & Actions'}
+          {generating ? 'Generating…' : '📝 Generate Summary & Actions'}
         </button>
       </div>
       {error && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
