@@ -46,6 +46,7 @@ router.post('/', authenticate, async (req, res) => {
   const {
     company_name, project_name, project_type, contact_name, contact_details,
     list_type, event_date, estimated_revenue, estimated_gp, google_link, notes, loss_reason,
+    project_lead_name, project_entity,
   } = req.body;
   if (!company_name || !list_type) {
     return res.status(400).json({ error: 'company_name and list_type are required' });
@@ -54,14 +55,16 @@ router.post('/', authenticate, async (req, res) => {
     const { rows } = await pool.query(
       `INSERT INTO clients
          (user_id, company_name, project_name, project_type, contact_name, contact_details,
-          list_type, event_date, estimated_revenue, estimated_gp, google_link, notes, loss_reason)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+          list_type, event_date, estimated_revenue, estimated_gp, google_link, notes, loss_reason,
+          project_lead_name, project_entity)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
       [
         req.user.id, company_name, project_name || null, project_type || null,
         contact_name || null, contact_details || null,
         list_type, event_date || null,
         estimated_revenue || null, estimated_gp || null,
         google_link || null, notes || null, loss_reason || null,
+        project_lead_name || null, project_entity || null,
       ]
     );
     res.status(201).json(rows[0]);
@@ -76,6 +79,7 @@ router.put('/:id', authenticate, async (req, res) => {
   const {
     company_name, project_name, project_type, contact_name, contact_details,
     list_type, event_date, estimated_revenue, estimated_gp, google_link, notes, is_active, loss_reason,
+    project_lead_name, project_entity,
   } = req.body;
   try {
     const { rows: existing } = await pool.query('SELECT * FROM clients WHERE id = $1', [req.params.id]);
@@ -101,8 +105,9 @@ router.put('/:id', authenticate, async (req, res) => {
         company_name = $1, project_name = $2, project_type = $3,
         contact_name = $4, contact_details = $5, list_type = $6,
         event_date = $7, estimated_revenue = $8, estimated_gp = $9,
-        google_link = $10, notes = $11, is_active = $12, loss_reason = $13, updated_at = NOW()
-       WHERE id = $14 RETURNING *`,
+        google_link = $10, notes = $11, is_active = $12, loss_reason = $13,
+        project_lead_name = $14, project_entity = $15, updated_at = NOW()
+       WHERE id = $16 RETURNING *`,
       [
         company_name ?? c.company_name,
         project_name !== undefined ? project_name : c.project_name,
@@ -110,13 +115,15 @@ router.put('/:id', authenticate, async (req, res) => {
         contact_name !== undefined ? contact_name : c.contact_name,
         contact_details !== undefined ? contact_details : c.contact_details,
         list_type ?? c.list_type,
-        event_date !== undefined ? event_date : c.event_date,
+        event_date !== undefined ? (event_date || null) : c.event_date,
         estimated_revenue !== undefined ? estimated_revenue : c.estimated_revenue,
         estimated_gp !== undefined ? estimated_gp : c.estimated_gp,
         google_link !== undefined ? google_link : c.google_link,
         notes !== undefined ? notes : c.notes,
         is_active !== undefined ? is_active : c.is_active,
         loss_reason !== undefined ? loss_reason : c.loss_reason,
+        project_lead_name !== undefined ? (project_lead_name || null) : c.project_lead_name,
+        project_entity !== undefined ? (project_entity || null) : c.project_entity,
         req.params.id,
       ]
     );

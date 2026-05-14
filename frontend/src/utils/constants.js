@@ -5,6 +5,26 @@ export const EVENT_TYPES = [
   'Opening Ceremony / Product Launch',
   'Exhibition',
   'FMCG / Brand Activations',
-  'Others',
-  'Non-Events',
+  'Manpower / Co-broke',
+];
+
+export const PROJECT_ENTITIES = [
+  "Elitez Events - Sam's Team",
+  "Elitez (FMCG) - Jorena's Team",
+  "Elitez Pte Ltd - HQ",
+  "Elitez Pte Ltd - Sharon's Team",
+  "Elitez Pte Ltd - Jack's Team",
+  "Elitez Pte Ltd - Nicholas' Team",
+  "SDT - Ian's Team",
+  "Elitez & Associates",
+  "Elitez Security",
+  "JOIE",
+  "Elitez Aviation",
+  "Dynamic Human Capital",
+  "Heyrocket",
+  "Overseas Team - Malaysia",
+  "Overseas Team - Thailand",
+  "Overseas Team - Vietnam",
+  "Overseas Team - Indonesia",
+  "Overseas Team - India",
 ];

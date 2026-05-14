@@ -205,6 +205,10 @@ ALTER TABLE individual_reviews ADD COLUMN IF NOT EXISTS spend NUMERIC(10,2);
 
 -- External Co-Broker GP splits on projects
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS external_brokers JSONB NOT NULL DEFAULT '[]';
+
+-- Manpower / Co-broke client fields
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS project_lead_name VARCHAR(200);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS project_entity VARCHAR(100);
 `;
 
 async function migrate() {

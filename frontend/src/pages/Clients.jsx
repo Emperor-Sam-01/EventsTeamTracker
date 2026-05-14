@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../utils/format';
-import { EVENT_TYPES } from '../utils/constants';
+import { EVENT_TYPES, PROJECT_ENTITIES } from '../utils/constants';
 
 // ─── KPI helpers ──────────────────────────────────────────────────────────────
 const BASE_TARGETS = {
@@ -56,7 +56,11 @@ const EMPTY_CLIENT = {
   contact_name:'', contact_details:'',
   list_type:'prospect', event_date:'',
   estimated_revenue:'', estimated_gp:'', google_link:'', notes:'',
+  project_lead_name:'', project_entity:'',
 };
+
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const PROJ_YEARS = [2024, 2025, 2026, 2027, 2028];
 
 function getLastMonday() {
   const d = new Date();
@@ -115,19 +119,37 @@ function MetricRow({ label, targetVal, actualVal, onChange }) {
 // ─── Client modal ─────────────────────────────────────────────────────────────
 function ClientModal({ client, onSave, onClose }) {
   const [form, setForm] = useState(client
-    ? { ...EMPTY_CLIENT, ...client, event_date: client.event_date?.split('T')[0]||'', google_link: client.google_link||'' }
+    ? { ...EMPTY_CLIENT, ...client, event_date: client.event_date?.split('T')[0]||'', google_link: client.google_link||'', project_lead_name: client.project_lead_name||'', project_entity: client.project_entity||'' }
     : EMPTY_CLIENT
   );
+  const [projMonth, setProjMonth] = useState(() => {
+    if (client?.event_date) return new Date(client.event_date.split('T')[0] + 'T12:00:00').getMonth() + 1;
+    return new Date().getMonth() + 1;
+  });
+  const [projYear, setProjYear] = useState(() => {
+    if (client?.event_date) return new Date(client.event_date.split('T')[0] + 'T12:00:00').getFullYear();
+    return new Date().getFullYear();
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
+
+  const isManpower = form.project_type === 'Manpower / Co-broke';
+  const isFMCG = form.project_type === 'FMCG / Brand Activations';
+  const eventDateLabel = isFMCG ? 'Activation Date' : 'Event Date';
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setSaving(true); setError('');
     try {
       const payload = {
         ...form,
-        estimated_revenue: form.estimated_revenue ? parseFloat(form.estimated_revenue) : null,
-        estimated_gp:      form.estimated_gp      ? parseFloat(form.estimated_gp)      : null,
+        event_date: isManpower
+          ? `${projYear}-${String(projMonth).padStart(2, '0')}-01`
+          : (form.event_date || null),
+        estimated_revenue: isManpower ? null : (form.estimated_revenue ? parseFloat(form.estimated_revenue) : null),
+        estimated_gp:      isManpower ? null : (form.estimated_gp      ? parseFloat(form.estimated_gp)      : null),
+        contact_name:      isManpower ? null : form.contact_name,
+        contact_details:   isManpower ? null : form.contact_details,
+        google_link:       isManpower ? null : (form.google_link || null),
       };
       client?.id ? await api.put(`/clients/${client.id}`, payload) : await api.post('/clients', payload);
       onSave();
@@ -169,36 +191,67 @@ function ClientModal({ client, onSave, onClose }) {
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Contact Person Name <span className="text-red-500">*</span></label>
-              <input className="input" placeholder="Full name" {...f('contact_name')} required />
-            </div>
-            <div>
-              <label className="label">Contact Details <span className="text-red-500">*</span></label>
-              <input className="input" placeholder="Email or phone" {...f('contact_details')} required />
-            </div>
-          </div>
-          <div>
-            <label className="label">Event Date (if known)</label>
-            <input type="date" className="input" {...f('event_date')} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Estimated Revenue ($) <span className="text-red-500">*</span></label>
-              <input type="number" className="input" min="0" step="0.01" {...f('estimated_revenue')} required />
-            </div>
-            <div>
-              <label className="label">Estimated Cost ($) <span className="text-red-500">*</span></label>
-              <input type="number" className="input" min="0" step="0.01" {...f('estimated_gp')} required />
-            </div>
-          </div>
-          {form.list_type === 'pipeline' && (
-            <div>
-              <label className="label">Project Google Drive Link / Xero Quote No.</label>
-              <input className="input" placeholder="https://drive.google.com/... or Xero quote number" {...f('google_link')} />
-            </div>
+
+          {isManpower ? (
+            <>
+              <div>
+                <label className="label">Main Project Lead Name <span className="text-red-500">*</span></label>
+                <input className="input" placeholder="Full name" {...f('project_lead_name')} required />
+              </div>
+              <div>
+                <label className="label">Project Entity <span className="text-red-500">*</span></label>
+                <select className="input" {...f('project_entity')} required>
+                  <option value="">Select entity...</option>
+                  {PROJECT_ENTITIES.map(e => <option key={e} value={e}>{e}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Project Date</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <select className="input" value={projMonth} onChange={e => setProjMonth(parseInt(e.target.value))}>
+                    {MONTHS.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+                  </select>
+                  <select className="input" value={projYear} onChange={e => setProjYear(parseInt(e.target.value))}>
+                    {PROJ_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Contact Person Name <span className="text-red-500">*</span></label>
+                  <input className="input" placeholder="Full name" {...f('contact_name')} required />
+                </div>
+                <div>
+                  <label className="label">Contact Details <span className="text-red-500">*</span></label>
+                  <input className="input" placeholder="Email or phone" {...f('contact_details')} required />
+                </div>
+              </div>
+              <div>
+                <label className="label">{eventDateLabel} (if known)</label>
+                <input type="date" className="input" {...f('event_date')} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Estimated Revenue ($) <span className="text-red-500">*</span></label>
+                  <input type="number" className="input" min="0" step="0.01" {...f('estimated_revenue')} required />
+                </div>
+                <div>
+                  <label className="label">Estimated Cost ($) <span className="text-red-500">*</span></label>
+                  <input type="number" className="input" min="0" step="0.01" {...f('estimated_gp')} required />
+                </div>
+              </div>
+              {form.list_type === 'pipeline' && (
+                <div>
+                  <label className="label">Project Google Drive Link / Xero Link</label>
+                  <input className="input" placeholder="https://drive.google.com/... or Xero link" {...f('google_link')} />
+                </div>
+              )}
+            </>
           )}
+
           <div>
             <label className="label">Notes</label>
             <textarea className="input" rows={2} {...f('notes')} />
@@ -238,7 +291,7 @@ function ConvertToPipelineModal({ client, onSave, onClose }) {
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
-            <label className="label">Project Google Drive Link / Xero Quote No.</label>
+            <label className="label">Project Google Drive Link / Xero Link</label>
             <input
               className="input"
               placeholder="https://drive.google.com/... or Xero quote number"
@@ -454,7 +507,7 @@ function ConvertModal({ client, onSave, onClose }) {
           </div>
 
           <div>
-            <label className="label">Project Google Drive Link / Xero Quote No.</label>
+            <label className="label">Project Google Drive Link / Xero Link</label>
             <input className="input" placeholder="https://drive.google.com/... or Xero quote number" {...f('project_google_link')} />
           </div>
           <div>

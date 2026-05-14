@@ -311,7 +311,7 @@ function ProjectModal({ project, onSave, onClose }) {
           </div>
 
           <div>
-            <label className="label">Project Google Drive Link / Xero Quote No.</label>
+            <label className="label">Project Google Drive Link / Xero Link</label>
             <input
               className="input"
               placeholder="https://drive.google.com/... or Xero quote number"
