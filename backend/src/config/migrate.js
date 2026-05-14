@@ -194,6 +194,9 @@ CREATE TABLE IF NOT EXISTS team_reviews (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(quarter, year)
 );
+
+-- Link non-BDM users to their reporting BDM
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bdm_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
 `;
 
 async function migrate() {

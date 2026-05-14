@@ -64,10 +64,44 @@ const DISC_INSIGHTS = {
   },
 };
 
-function IndividualInsight({ type }) {
+const DISC_ROLE_TIPS = {
+  D: {
+    bd:   "Your directness is an asset in BD. Lead with clear value propositions and close confidently. Clients respect decisiveness. Watch your pace with analytical buyers — slow down to let them process. Your urgency can be infectious in a positive way when aligned with the client's goals.",
+    pe:   "You thrive under event-day pressure. When things go sideways, make the call quickly and move on. Brief your team and vendors with crystal-clear instructions — ambiguity costs time and money. With clients, be confident but document every promise made so nothing slips.",
+    mgmt: "Your drive sets the team's pace. Channel it into clear goal-setting, accountability structures, and visible wins. Be conscious of how your directness lands on S and C types — what feels efficient to you can feel dismissive to them.",
+  },
+  I: {
+    bd:   "You build rapport faster than almost anyone — lean into it. Lead with enthusiasm and paint a vivid picture of what the event could be. Convert that energy into follow-through: send the proposal the same day, not next week. Follow up in writing to keep clients accountable.",
+    pe:   "Your energy keeps the atmosphere positive on event day and clients love working with you. Back it up with a solid pre-event checklist so no detail slips. Your warmth handles stressed clients brilliantly — use it when things go sideways. Build systems with your team to cover the detail gaps.",
+    mgmt: "You inspire the team and bring energy to every room. Balance inspiration with structure — written follow-ups, regular check-ins, and holding people accountable even when it feels uncomfortable. Recognition from you means a lot; use it strategically.",
+  },
+  S: {
+    bd:   "Your patience and genuine care build lasting client trust — clients come back to you because you listen and deliver. Push yourself to ask for the close directly; your track record earns that confidence. Set consistent weekly outreach targets and honour them even when it feels uncomfortable.",
+    pe:   "You're the calm anchor during chaotic events. Clients feel genuinely reassured by your steady, reliable presence. Invest time in thorough vendor briefings and build those relationships early. Your composure when things go wrong is one of your most valuable traits on event day.",
+    mgmt: "Your team feels safe and supported with you. Maintain that while leaning harder into performance conversations — avoiding difficult feedback doesn't help your team grow. Structure regular 1-1s so issues surface before they become bigger problems.",
+  },
+  C: {
+    bd:   "Your proposals are the most thorough and credible on the team. Back every recommendation with precise data and clear logic. Learn to read the room — some clients need a bolder close, not more data. After your presentation, ask directly: 'Does this work for you?' Avoid leaving without a clear next step.",
+    pe:   "Your pre-event planning is exceptional — vendors and clients trust your runsheets completely. On event day, trust your preparation and adapt quickly rather than over-analysing mid-event. Not everything will go perfectly, and that's okay; your contingency planning already sets you apart.",
+    mgmt: "Your high standards elevate the team's quality output. Be explicit about your expectations so others can consistently meet them. Create space for creative thinking in the team — not every idea needs to be fully stress-tested before it's worth exploring.",
+  },
+};
+
+function getRoleTip(type, role) {
+  const cat = ['bde','sbde','bda'].includes(role) ? 'bd'
+            : ['pe','spe','pa'].includes(role) ? 'pe'
+            : 'mgmt';
+  const label = cat === 'bd'   ? '💼 Sales & BD Tips for Your Style'
+              : cat === 'pe'   ? '🎪 Event Management Tips for Your Style'
+              :                  '👥 Leadership & Management Tips for Your Style';
+  return { text: DISC_ROLE_TIPS[type]?.[cat] || '', label };
+}
+
+function IndividualInsight({ type, role }) {
   const info = DISC_INFO[type];
   const insight = DISC_INSIGHTS[type];
   if (!insight) return null;
+  const roleTip = getRoleTip(type, role);
   return (
     <div className="card mt-4 space-y-4">
       <div className="flex items-center gap-3">
@@ -96,10 +130,12 @@ function IndividualInsight({ type }) {
         <div className="text-xs font-semibold text-gray-700 mb-1">🗣 How to Communicate With You</div>
         <p className="text-xs text-gray-700">{insight.communication}</p>
       </div>
-      <div className="bg-brand-50 border border-brand-200 rounded-xl p-3">
-        <div className="text-xs font-semibold text-brand-700 mb-1">🤝 Working With This Type — Client Tip</div>
-        <p className="text-xs text-brand-800">{insight.clientTip}</p>
-      </div>
+      {roleTip.text && (
+        <div className="bg-brand-50 border border-brand-200 rounded-xl p-3">
+          <div className="text-xs font-semibold text-brand-700 mb-1">{roleTip.label}</div>
+          <p className="text-xs text-brand-800">{roleTip.text}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -226,11 +262,96 @@ function CompatScore({ score }) {
   );
 }
 
+function TeamAnalysis({ myProfile, teamProfiles }) {
+  const fullTeam = [myProfile, ...teamProfiles];
+  const pairs = [];
+  for (let i = 0; i < fullTeam.length; i++) {
+    for (let j = i + 1; j < fullTeam.length; j++) {
+      pairs.push({ a: fullTeam[i], b: fullTeam[j], compat: getCompat(fullTeam[i].dominant_type, fullTeam[j].dominant_type) });
+    }
+  }
+  const typeCounts = { D: 0, I: 0, S: 0, C: 0 };
+  fullTeam.forEach(p => { typeCounts[p.dominant_type] = (typeCounts[p.dominant_type] || 0) + 1; });
+  const hasD = typeCounts.D > 0, hasI = typeCounts.I > 0, hasS = typeCounts.S > 0, hasC = typeCounts.C > 0;
+  const avgScore = pairs.length > 0 ? Math.round(pairs.reduce((s, p) => s + (p.compat?.score || 0), 0) / pairs.length) : null;
+  const avgColor = avgScore >= 80 ? 'text-green-600' : avgScore >= 65 ? 'text-amber-500' : 'text-red-500';
+  return (
+    <div className="space-y-4 border-t pt-4 mt-2">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="text-xs font-semibold text-gray-700">Team of {fullTeam.length}: {fullTeam.map(p => p.name?.split(' ')[0] || 'You').join(', ')}</div>
+        {avgScore !== null && <div className="text-xs text-gray-500">Avg compatibility: <span className={`font-bold ${avgColor}`}>{avgScore}/100</span></div>}
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        {['D','I','S','C'].map(type => (
+          <div key={type} className={`rounded-xl p-2 text-center border-2 ${typeCounts[type] > 0 ? `border-transparent ${DISC_INFO[type].bg}` : 'bg-gray-50 text-gray-300 border-gray-200'}`}>
+            <div className="text-xl font-black">{typeCounts[type]}</div>
+            <div className="text-xs font-bold">{type}</div>
+          </div>
+        ))}
+      </div>
+      <div className="grid md:grid-cols-2 gap-3">
+        <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+          <div className="text-xs font-semibold text-green-700 mb-2">💪 Team Strengths</div>
+          <ul className="space-y-0.5 text-xs text-green-800">
+            {hasD && <li>• Drive and decisiveness to push things forward</li>}
+            {hasI && <li>• Enthusiasm and relationship-building energy</li>}
+            {hasS && <li>• Stability, follow-through, and consistent execution</li>}
+            {hasC && <li>• Analytical rigour and attention to quality</li>}
+          </ul>
+        </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+          <div className="text-xs font-semibold text-amber-700 mb-2">⚠ Potential Gaps</div>
+          <ul className="space-y-0.5 text-xs text-amber-800">
+            {!hasD && <li>• No strong driver — decisions may stall</li>}
+            {!hasI && <li>• Low social energy — client rapport may need extra effort</li>}
+            {!hasS && <li>• Limited steadiness — team may be reactive under pressure</li>}
+            {!hasC && <li>• Low analytical presence — quality checks needed</li>}
+            {hasD && hasI && hasS && hasC && <li>• Well-rounded mix — watch for communication style clashes</li>}
+          </ul>
+        </div>
+      </div>
+      {pairs.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-gray-700">Pairwise Compatibility</div>
+          {pairs.map((pair, i) => {
+            const c = pair.compat;
+            const score = c?.score || 0;
+            const color = score >= 80 ? 'text-green-600' : score >= 65 ? 'text-amber-500' : 'text-red-500';
+            const barColor = score >= 80 ? 'bg-green-500' : score >= 65 ? 'bg-amber-400' : 'bg-red-400';
+            return (
+              <div key={i} className="border rounded-xl p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="text-xs font-medium text-gray-800 flex items-center gap-1 flex-wrap">
+                    <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${DISC_INFO[pair.a.dominant_type]?.bg}`}>{pair.a.dominant_type}</span>
+                    {pair.a.name?.split(' ')[0] || 'You'}
+                    <span className="text-gray-400 mx-1">↔</span>
+                    <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${DISC_INFO[pair.b.dominant_type]?.bg}`}>{pair.b.dominant_type}</span>
+                    {pair.b.name?.split(' ')[0]}
+                  </div>
+                  <span className={`text-sm font-bold ml-2 shrink-0 ${color}`}>{score}/100</span>
+                </div>
+                {c && (
+                  <>
+                    <div className="w-full bg-gray-100 rounded-full h-1.5 mb-1.5">
+                      <div className={`h-1.5 rounded-full ${barColor}`} style={{ width: `${score}%` }} />
+                    </div>
+                    <div className="text-xs text-gray-500"><span className="font-medium text-gray-700">{c.label}</span> — {c.tip}</div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DISCSection() {
   const { user } = useAuth();
   const [profile, setProfile] = useState(null);
   const [allProfiles, setAllProfiles] = useState([]);
-  const [compareId, setCompareId] = useState('');
+  const [teamIds, setTeamIds] = useState([]);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ d_score: 25, i_score: 25, s_score: 25, c_score: 25, notes: '' });
   const [saving, setSaving] = useState(false);
@@ -254,8 +375,9 @@ function DISCSection() {
     finally { setSaving(false); }
   };
 
-  const compareProfile = allProfiles.find(p => p.user_id === parseInt(compareId));
-  const compat = profile && compareProfile ? getCompat(profile.dominant_type, compareProfile.dominant_type) : null;
+  const toggleTeam = id => setTeamIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const teamProfiles = allProfiles.filter(p => teamIds.includes(p.user_id));
+  const teammates = allProfiles.filter(p => p.user_id !== user.id);
 
   const radarData = profile ? [
     { type: 'D', value: profile.d_score },
@@ -332,72 +454,42 @@ function DISCSection() {
         )}
       </div>
 
-      {/* Individual insights — hidden when comparing */}
-      {profile && !compareId && <IndividualInsight type={profile.dominant_type} />}
+      {/* Individual insights — hidden when team is selected */}
+      {profile && teamIds.length === 0 && <IndividualInsight type={profile.dominant_type} role={user.role} />}
 
-      {/* Compare */}
+      {/* Build a Team */}
       {profile && (
         <div className="card">
-          <h2 className="text-sm font-semibold text-gray-900 mb-4">Compare with a Teammate</h2>
-          <select className="input w-auto text-sm mb-4" value={compareId} onChange={e => setCompareId(e.target.value)}>
-            <option value="">Select a teammate...</option>
-            {allProfiles.filter(p => p.user_id !== user.id).map(p => (
-              <option key={p.user_id} value={p.user_id}>{p.name} ({p.dominant_type})</option>
-            ))}
-          </select>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-sm font-semibold text-gray-900">Build a Team</h2>
+            {teamIds.length > 0 && (
+              <button onClick={() => setTeamIds([])} className="text-xs text-gray-400 hover:text-gray-600">✕ Clear</button>
+            )}
+          </div>
+          <p className="text-xs text-gray-500 mb-4">Select teammates to see how well the group would work together on a project.</p>
 
-          {compareProfile && compat && (
-            <div className="space-y-4">
-              <div className="grid md:grid-cols-3 gap-4 items-center">
-                <div className="text-center">
-                  <div className="text-xs text-gray-500 mb-1">You</div>
-                  <div className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${DISC_INFO[profile.dominant_type]?.bg}`}>{profile.dominant_type} — {DISC_INFO[profile.dominant_type]?.label}</div>
-                  <div className="mt-2 space-y-1">
-                    <DISCBar type="D" value={profile.d_score} />
-                    <DISCBar type="I" value={profile.i_score} />
-                    <DISCBar type="S" value={profile.s_score} />
-                    <DISCBar type="C" value={profile.c_score} />
-                  </div>
-                </div>
-                <CompatScore score={compat.score} />
-                <div className="text-center">
-                  <div className="text-xs text-gray-500 mb-1">{compareProfile.name}</div>
-                  <div className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${DISC_INFO[compareProfile.dominant_type]?.bg}`}>{compareProfile.dominant_type} — {DISC_INFO[compareProfile.dominant_type]?.label}</div>
-                  <div className="mt-2 space-y-1">
-                    <DISCBar type="D" value={compareProfile.d_score} />
-                    <DISCBar type="I" value={compareProfile.i_score} />
-                    <DISCBar type="S" value={compareProfile.s_score} />
-                    <DISCBar type="C" value={compareProfile.c_score} />
-                  </div>
-                </div>
-              </div>
-              <div className="border-t pt-4">
-                <div className="font-semibold text-gray-900 mb-1">{compat.label}</div>
-                <p className="text-sm text-gray-600 mb-3">{compat.desc}</p>
-                <div className="grid md:grid-cols-2 gap-3">
-                  <div className="bg-green-50 border border-green-200 rounded-xl p-3">
-                    <div className="text-xs font-semibold text-green-700 mb-2">✓ Strengths Together</div>
-                    <ul className="space-y-1">
-                      {compat.good.map((g,i) => <li key={i} className="text-xs text-green-800">• {g}</li>)}
-                    </ul>
-                  </div>
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                    <div className="text-xs font-semibold text-amber-700 mb-2">⚠ Watch Out For</div>
-                    <ul className="space-y-1">
-                      {compat.watch.map((w,i) => <li key={i} className="text-xs text-amber-800">• {w}</li>)}
-                    </ul>
-                  </div>
-                </div>
-                <div className="bg-brand-50 border border-brand-200 rounded-xl p-3 mt-3">
-                  <div className="text-xs font-semibold text-brand-700 mb-1">💡 Working Tip</div>
-                  <p className="text-xs text-brand-800">{compat.tip}</p>
-                </div>
-              </div>
+          {teammates.length === 0 ? (
+            <p className="text-xs text-gray-400">No teammates have set up their DISC profiles yet.</p>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {teammates.map(p => {
+                const isSelected = teamIds.includes(p.user_id);
+                return (
+                  <button
+                    key={p.user_id}
+                    onClick={() => toggleTeam(p.user_id)}
+                    className={`border-2 rounded-xl p-3 text-center transition-all ${isSelected ? 'border-brand-500 bg-brand-50' : 'border-gray-200 hover:border-gray-300 bg-white'}`}
+                  >
+                    <div className="text-sm font-medium text-gray-900 mb-1">{p.name.split(' ')[0]}</div>
+                    <div className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold mb-1 ${DISC_INFO[p.dominant_type]?.bg}`}>{p.dominant_type} — {DISC_INFO[p.dominant_type]?.label}</div>
+                    {isSelected && <div className="text-brand-600 text-xs font-semibold mt-1">✓ In team</div>}
+                  </button>
+                );
+              })}
             </div>
           )}
-          {allProfiles.filter(p => p.user_id !== user.id).length === 0 && (
-            <p className="text-xs text-gray-400">No teammates have set up their DISC profiles yet.</p>
-          )}
+
+          {teamIds.length >= 1 && <TeamAnalysis myProfile={profile} teamProfiles={teamProfiles} />}
         </div>
       )}
 

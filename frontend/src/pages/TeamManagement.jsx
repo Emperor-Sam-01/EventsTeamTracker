@@ -52,10 +52,10 @@ const EMPTY = {
   join_month: new Date().getMonth() + 1,
   join_year: new Date().getFullYear(),
   salary: '', cpf_type: 'cpf', cpf_rate: '0.17', permit_cost: '0',
-  gp_target_t1: '',
+  gp_target_t1: '', bdm_id: '',
 };
 
-function UserModal({ user, onSave, onClose }) {
+function UserModal({ user, onSave, onClose, bdmList }) {
   const initForm = () => {
     if (!user) return EMPTY;
     const dateStr = user.join_date ? user.join_date.split('T')[0] : null;
@@ -72,6 +72,7 @@ function UserModal({ user, onSave, onClose }) {
       cpf_rate: user.cpf_rate != null ? String(user.cpf_rate) : '0.17',
       permit_cost: user.permit_cost != null ? String(user.permit_cost) : '0',
       gp_target_t1: user.gp_target_t1 != null ? String(user.gp_target_t1) : '',
+      bdm_id: user.bdm_id != null ? String(user.bdm_id) : '',
     };
   };
 
@@ -106,6 +107,7 @@ function UserModal({ user, onSave, onClose }) {
         cpf_rate:    isExecPA ? 0 : (isCPF ? parseFloat(form.cpf_rate) || 0 : 0),
         permit_cost: isExecPA ? 0 : (!isCPF ? parseFloat(form.permit_cost) || 0 : 0),
         gp_target_t1: (showTargets && form.gp_target_t1 !== '') ? parseFloat(form.gp_target_t1) : null,
+        bdm_id: (!isExecPA && form.role !== 'bdm' && form.bdm_id !== '') ? parseInt(form.bdm_id) : null,
       };
       if (form.password) payload.password = form.password;
       if (user?.id) {
@@ -155,6 +157,15 @@ function UserModal({ user, onSave, onClose }) {
                 {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
+            {form.role !== 'bdm' && form.role !== 'exec_pa' && (
+              <div>
+                <label className="label">Reporting to (BDM)</label>
+                <select className="input" value={form.bdm_id} onChange={e => setForm(f => ({ ...f, bdm_id: e.target.value }))}>
+                  <option value="">Not assigned</option>
+                  {bdmList.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+            )}
             <div>
               <label className="label">Join Date (Month &amp; Year)</label>
               <div className="flex gap-2">
@@ -501,6 +512,7 @@ export default function TeamManagement() {
               <tr className="text-xs text-gray-500 uppercase border-b bg-gray-50">
                 <th className="text-left py-3 px-3 cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('name')}>Name<SortIcon col="name" /></th>
                 <th className="text-left py-3 px-3 cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('role')}>Role<SortIcon col="role" /></th>
+                <th className="text-left py-3 px-3">BDM</th>
                 <th className="text-left py-3 px-3 cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('join_date')}>Joined<SortIcon col="join_date" /></th>
                 <th className="text-right py-3 px-3 cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('salary')}>Salary<SortIcon col="salary" /></th>
                 <th className="text-left py-3 px-3">CPF/Permit</th>
@@ -512,7 +524,7 @@ export default function TeamManagement() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filtered.length === 0 && (
-                <tr><td colSpan={9} className="text-center py-10 text-gray-400">No members found.</td></tr>
+                <tr><td colSpan={10} className="text-center py-10 text-gray-400">No members found.</td></tr>
               )}
               {filtered.map(u => {
                 const isExecPA    = u.role === 'exec_pa';
@@ -530,6 +542,9 @@ export default function TeamManagement() {
                   <tr key={u.id} className={`hover:bg-gray-50 ${!u.is_active ? 'opacity-50' : ''}`}>
                     <td className="py-2.5 px-3 font-medium text-gray-900">{u.name}</td>
                     <td className="py-2.5 px-3"><span className={`badge ${ROLE_COLORS[u.role]}`}>{u.role.toUpperCase()}</span></td>
+                    <td className="py-2.5 px-3 text-xs text-gray-500">
+                      {u.bdm_id ? (users.find(b => b.id === u.bdm_id)?.name?.split(' ')[0] || '—') : <span className="text-gray-300">—</span>}
+                    </td>
                     <td className="py-2.5 px-3 text-gray-500">{fmtJoinDate(u.join_date)}</td>
                     <td className="py-2.5 px-3 text-right">{isExecPA ? '—' : formatCurrency(u.salary)}</td>
                     <td className="py-2.5 px-3 text-gray-500 text-xs">
@@ -593,6 +608,7 @@ export default function TeamManagement() {
           user={editing}
           onSave={() => { setShowModal(false); load(); }}
           onClose={() => setShowModal(false)}
+          bdmList={users.filter(u => u.role === 'bdm' && u.is_active)}
         />
       )}
 

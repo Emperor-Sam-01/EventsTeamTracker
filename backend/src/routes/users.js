@@ -12,7 +12,7 @@ router.get('/', authenticate, async (req, res) => {
   try {
     if (isBDM) {
       const { rows } = await pool.query(
-        `SELECT id, name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, is_active, created_at
+        `SELECT id, name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, bdm_id, is_active, created_at
          FROM users ORDER BY name`
       );
       res.json(rows.map(u => ({
@@ -40,7 +40,7 @@ router.get('/:id', authenticate, async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT id, name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, is_active
+      `SELECT id, name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, bdm_id, is_active
        FROM users WHERE id = $1`,
       [targetId]
     );
@@ -83,7 +83,7 @@ router.post('/', authenticate, requireBDM, async (req, res) => {
 
 // Update user (BDM only)
 router.put('/:id', authenticate, requireBDM, async (req, res) => {
-  const { name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, is_active } = req.body;
+  const { name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, bdm_id, is_active } = req.body;
   try {
     const { rows } = await pool.query(
       `UPDATE users SET
@@ -96,10 +96,11 @@ router.put('/:id', authenticate, requireBDM, async (req, res) => {
         cpf_rate = COALESCE($7, cpf_rate),
         permit_cost = COALESCE($8, permit_cost),
         gp_target_t1 = $9,
-        is_active = COALESCE($10, is_active),
+        bdm_id = $10,
+        is_active = COALESCE($11, is_active),
         updated_at = NOW()
-       WHERE id = $11 RETURNING id, name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, is_active`,
-      [name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1 ?? null, is_active, req.params.id]
+       WHERE id = $12 RETURNING id, name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, bdm_id, is_active`,
+      [name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1 ?? null, bdm_id ?? null, is_active, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'User not found' });
     res.json(rows[0]);
