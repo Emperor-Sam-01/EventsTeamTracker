@@ -275,12 +275,23 @@ function TeamAnalysis({ myProfile, teamProfiles }) {
   const hasD = typeCounts.D > 0, hasI = typeCounts.I > 0, hasS = typeCounts.S > 0, hasC = typeCounts.C > 0;
   const avgScore = pairs.length > 0 ? Math.round(pairs.reduce((s, p) => s + (p.compat?.score || 0), 0) / pairs.length) : null;
   const avgColor = avgScore >= 80 ? 'text-green-600' : avgScore >= 65 ? 'text-amber-500' : 'text-red-500';
+  const avgLabel = avgScore >= 80 ? 'Strong Team Fit' : avgScore >= 65 ? 'Good Working Pair' : 'Needs Extra Effort';
   return (
     <div className="space-y-4 border-t pt-4 mt-2">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="text-xs font-semibold text-gray-700">Team of {fullTeam.length}: {fullTeam.map(p => p.name?.split(' ')[0] || 'You').join(', ')}</div>
-        {avgScore !== null && <div className="text-xs text-gray-500">Avg compatibility: <span className={`font-bold ${avgColor}`}>{avgScore}/100</span></div>}
+      {/* Team score */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <div className="text-xs font-semibold text-gray-700">Team of {fullTeam.length}</div>
+          <div className="text-xs text-gray-400 mt-0.5">{fullTeam.map(p => p.name?.split(' ')[0] || 'You').join(' · ')}</div>
+        </div>
+        {avgScore !== null && (
+          <div className="text-center bg-gray-50 rounded-xl px-5 py-2 border">
+            <div className={`text-3xl font-black ${avgColor}`}>{avgScore}<span className="text-base font-normal text-gray-300">/100</span></div>
+            <div className={`text-xs font-semibold mt-0.5 ${avgColor}`}>{avgLabel}</div>
+          </div>
+        )}
       </div>
+
       <div className="grid grid-cols-4 gap-2">
         {['D','I','S','C'].map(type => (
           <div key={type} className={`rounded-xl p-2 text-center border-2 ${typeCounts[type] > 0 ? `border-transparent ${DISC_INFO[type].bg}` : 'bg-gray-50 text-gray-300 border-gray-200'}`}>
