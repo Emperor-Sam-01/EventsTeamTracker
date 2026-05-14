@@ -240,20 +240,25 @@ function GapBadge({ gap }) {
 }
 
 const GP_MODES = [
-  { key: 'monthly',   label: 'This Month',      short: 'Monthly' },
-  { key: 'ytd',       label: 'Year-to-Date',     short: 'YTD' },
-  { key: 'projected', label: 'Projected Full Yr', short: 'Projected' },
+  { key: 'monthly',    label: 'This Month (Total)',   short: 'Monthly' },
+  { key: 'avgMonthly', label: 'This Month (Avg/head)', short: 'Avg Mo' },
+  { key: 'ytd',        label: 'Year-to-Date (Total)', short: 'YTD' },
+  { key: 'avgYtd',     label: 'Year-to-Date (Avg/head)', short: 'Avg YTD' },
+  { key: 'projected',  label: 'Projected Full Yr',    short: 'Projected' },
 ];
 
-function ToggleStat({ label, monthly, ytd, projected, isNP }) {
+function ToggleStat({ label, monthly, ytd, projected, avgMonthly, avgYtd, isNP }) {
   const [idx, setIdx] = useState(0);
-  const values = { monthly, ytd, projected };
-  const v = values[GP_MODES[idx].key];
+  const values = { monthly, avgMonthly, ytd, avgYtd, projected };
+  const mode = GP_MODES[idx];
+  const v = values[mode.key] ?? 0;
+  const isAvg = mode.key.startsWith('avg');
   const color = isNP ? (v >= 0 ? 'text-green-600' : 'text-red-600') : 'text-gray-900';
   return (
     <div className="card cursor-pointer select-none" onClick={() => setIdx((idx + 1) % GP_MODES.length)}>
       <div className="text-xs text-gray-500 uppercase tracking-wide font-medium">{label}</div>
       <div className={`text-2xl font-bold mt-1 ${color}`}>{formatCurrency(v)}</div>
+      <div className="text-xs text-gray-400 mt-0.5">{isAvg ? 'Per member (excl. BDM)' : mode.label}</div>
       <div className="flex gap-1 mt-1.5 flex-wrap">
         {GP_MODES.map((m, i) => (
           <span key={m.key} className={`text-xs px-1.5 py-0.5 rounded ${i === idx ? 'bg-brand-100 text-brand-700 font-medium' : 'text-gray-300'}`}>
@@ -337,25 +342,32 @@ export default function TeamDashboard() {
         <ToggleStat
           label="Team GP"
           monthly={benchmarks.team_gp}
+          avgMonthly={benchmarks.avg_gp}
           ytd={benchmarks.ytd_team_gp}
+          avgYtd={benchmarks.avg_ytd_gp}
           projected={benchmarks.projected_team_gp}
         />
         <ToggleStat
           label="Team NP"
           monthly={benchmarks.team_np}
+          avgMonthly={benchmarks.avg_np}
           ytd={benchmarks.ytd_team_np}
+          avgYtd={benchmarks.avg_ytd_np}
           projected={benchmarks.projected_team_np}
           isNP
         />
-        <div className="card">
-          <div className="text-xs text-gray-500 uppercase tracking-wide font-medium">Avg Monthly GP</div>
-          <div className="text-2xl font-bold mt-1 text-gray-900">{formatCurrency(benchmarks.avg_gp)}</div>
-          <div className="text-xs text-gray-400 mt-0.5">Per member (excl. BDM)</div>
-        </div>
-        <div className="card">
-          <div className="text-xs text-gray-500 uppercase tracking-wide font-medium">Avg YTD GP</div>
-          <div className="text-2xl font-bold mt-1 text-gray-900">{formatCurrency(benchmarks.avg_ytd_gp)}</div>
-          <div className="text-xs text-gray-400 mt-0.5">Per member year-to-date</div>
+        <div className="card col-span-2">
+          <div className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-2">Click any stat card to cycle through views</div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <div className="text-xs text-gray-400 mb-0.5">Avg Monthly GP / member</div>
+              <div className="text-lg font-bold text-gray-900">{formatCurrency(benchmarks.avg_gp)}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-400 mb-0.5">Avg YTD GP / member</div>
+              <div className="text-lg font-bold text-gray-900">{formatCurrency(benchmarks.avg_ytd_gp)}</div>
+            </div>
+          </div>
         </div>
       </div>
 

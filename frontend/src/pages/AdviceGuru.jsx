@@ -546,6 +546,47 @@ function fmtReviewDate(d) {
   return new Date(d.split('T')[0] + 'T12:00:00').toLocaleDateString('en-SG', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
+function GenerateSummaryBlock({ answers, memberName, summary, actionItems, onGenerated, onChangeSummary, onChangeActionItems }) {
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState('');
+
+  const generate = async () => {
+    setGenerating(true);
+    setError('');
+    try {
+      const res = await api.post('/reviews/generate', { answers, memberName });
+      onGenerated(res.data.summary, res.data.action_items);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to generate — check that ANTHROPIC_API_KEY is set in your backend .env');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-gray-500">Summary & action items are auto-generated from the answers above.</div>
+        <button type="button" onClick={generate} disabled={generating}
+          className="btn-primary text-sm flex items-center gap-1.5">
+          {generating ? '⏳ Generating…' : '✨ Generate Summary & Actions'}
+        </button>
+      </div>
+      {error && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+      <div className="card bg-blue-50 border border-blue-200">
+        <label className="label text-blue-800 font-semibold mb-2">📋 Session Summary</label>
+        <textarea className="input" rows={3} placeholder="Click Generate above, or type your own summary…"
+          value={summary} onChange={e => onChangeSummary(e.target.value)} />
+      </div>
+      <div className="card bg-amber-50 border border-amber-200">
+        <label className="label text-amber-800 font-semibold mb-2">✅ Action Items</label>
+        <textarea className="input" rows={4} placeholder="Click Generate above, or type your own action items…"
+          value={actionItems} onChange={e => onChangeActionItems(e.target.value)} />
+      </div>
+    </>
+  );
+}
+
 function ReviewSection() {
   const { user } = useAuth();
   const isBDM = user.role === 'bdm';
@@ -686,26 +727,37 @@ function ReviewSection() {
       {REVIEW_QUESTIONS.map((q, i) => (
         <div key={i} className="card">
           <label className="label font-semibold text-gray-800 mb-2">Q{i+1}. {q}</label>
-          <textarea className="input" rows={4} placeholder="Enter response..."
-            value={form.answers[i] || ''}
-            onChange={e => setForm(f => ({ ...f, answers: { ...f.answers, [i]: e.target.value } }))}
-          />
+          {i === 1 ? (
+            <input type="number" className="input" min={1} max={10} placeholder="Enter a number from 1 to 10"
+              value={form.answers[1] || ''}
+              onChange={e => {
+                const v = e.target.value;
+                if (v === '' || (parseInt(v) >= 1 && parseInt(v) <= 10)) {
+                  setForm(f => ({ ...f, answers: { ...f.answers, 1: v } }));
+                }
+              }}
+            />
+          ) : (
+            <textarea className="input" rows={4} placeholder="Enter response..."
+              value={form.answers[i] || ''}
+              onChange={e => setForm(f => ({ ...f, answers: { ...f.answers, [i]: e.target.value } }))}
+            />
+          )}
         </div>
       ))}
 
       {/* BDM notes & action items */}
       {isBDM && (
         <>
-          <div className="card bg-blue-50 border border-blue-200">
-            <label className="label text-blue-800 font-semibold mb-2">📋 BDM Notes & Session Summary</label>
-            <textarea className="input" rows={3} placeholder="Overall observations, themes from the session, notes for the record..." value={form.summary} onChange={e => setForm(f => ({ ...f, summary: e.target.value }))} />
-          </div>
-          <div className="card bg-amber-50 border border-amber-200">
-            <label className="label text-amber-800 font-semibold mb-2">✅ Action Items</label>
-            <textarea className="input" rows={4}
-              placeholder={'e.g.\n- Increase weekly outreach to 20 cold calls\n- Block Fridays for proposal writing\n- Revisit Q6 goals in 4 weeks'}
-              value={form.action_items} onChange={e => setForm(f => ({ ...f, action_items: e.target.value }))} />
-          </div>
+          <GenerateSummaryBlock
+            answers={form.answers}
+            memberName={teamUsers.find(u => u.id === form.user_id)?.name || ''}
+            summary={form.summary}
+            actionItems={form.action_items}
+            onGenerated={(summary, action_items) => setForm(f => ({ ...f, summary, action_items }))}
+            onChangeSummary={v => setForm(f => ({ ...f, summary: v }))}
+            onChangeActionItems={v => setForm(f => ({ ...f, action_items: v }))}
+          />
         </>
       )}
 

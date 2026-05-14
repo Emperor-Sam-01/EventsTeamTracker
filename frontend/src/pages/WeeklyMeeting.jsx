@@ -2,25 +2,38 @@ import React, { useEffect, useState } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
-function getThisMonday() {
+function getMonday(offsetWeeks = 0) {
   const d = new Date();
   const day = d.getDay();
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(d.setDate(diff));
-  return monday.toISOString().split('T')[0];
+  d.setDate(diff - offsetWeeks * 7);
+  return d.toISOString().split('T')[0];
 }
+
+function fmtWeekLabel(dateStr) {
+  const dt = new Date(dateStr + 'T12:00:00');
+  const today = new Date();
+  const thisMonday = getMonday(0);
+  const lastMonday = getMonday(1);
+  if (dateStr === thisMonday) return `This week (${dt.toLocaleDateString('en-SG', { day: 'numeric', month: 'short' })})`;
+  if (dateStr === lastMonday) return `Last week (${dt.toLocaleDateString('en-SG', { day: 'numeric', month: 'short' })})`;
+  return `2 weeks ago (${dt.toLocaleDateString('en-SG', { day: 'numeric', month: 'short' })})`;
+}
+
+const EMPTY_FORM = {
+  action_items: '',
+  cold_emails_target: '', cold_emails_actual: '',
+  cold_calls_target: '', cold_calls_actual: '',
+  new_clients_met_target: '', new_clients_met_actual: '',
+  proposals_sent_target: '', proposals_sent_actual: '',
+  existing_clients_count: '', potential_clients_count: '',
+};
 
 export default function WeeklyMeeting() {
   const { user } = useAuth();
-  const [weekStart] = useState(getThisMonday());
-  const [form, setForm] = useState({
-    action_items: '',
-    cold_emails_target: '', cold_emails_actual: '',
-    cold_calls_target: '', cold_calls_actual: '',
-    new_clients_met_target: '', new_clients_met_actual: '',
-    proposals_sent_target: '', proposals_sent_actual: '',
-    existing_clients_count: '', potential_clients_count: '',
-  });
+  const weekOptions = [getMonday(0), getMonday(1), getMonday(2)];
+  const [weekStart, setWeekStart] = useState(weekOptions[0]);
+  const [form, setForm] = useState(EMPTY_FORM);
   const [history, setHistory] = useState([]);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -28,7 +41,8 @@ export default function WeeklyMeeting() {
   const [loadingHistory, setLoadingHistory] = useState(true);
 
   useEffect(() => {
-    // Try to load current week
+    setForm(EMPTY_FORM);
+    setSuccess(false);
     api.get(`/meetings/week/${weekStart}`).then(r => {
       const d = r.data;
       setForm({
@@ -86,9 +100,19 @@ export default function WeeklyMeeting() {
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">Weekly Meeting</h1>
-        <p className="text-sm text-gray-500">Week of {new Date(weekStart).toLocaleDateString('en-SG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Weekly Meeting</h1>
+          <p className="text-sm text-gray-500">Submitting for week of {new Date(weekStart + 'T12:00:00').toLocaleDateString('en-SG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        </div>
+        <div>
+          <label className="label text-xs text-gray-500 mb-1">Submitting for</label>
+          <select className="input w-auto text-sm" value={weekStart} onChange={e => setWeekStart(e.target.value)}>
+            {weekOptions.map(w => (
+              <option key={w} value={w}>{fmtWeekLabel(w)}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">

@@ -1,7 +1,70 @@
 const express = require('express');
 const pool = require('../config/database');
 const { authenticate, requireBDM } = require('../middleware/auth');
+const Anthropic = require('@anthropic-ai/sdk');
 const router = express.Router();
+
+const REVIEW_QUESTIONS = [
+  'Have you achieved the goals set during your last catch-up? If not, what got in the way?',
+  'Give yourself an overall performance rating from 1 to 10.',
+  'Tell us more about your score.',
+  'Is there anything you\'re currently doing — or planning to start — that would push that rating higher next quarter?',
+  'Is there anything the management team can do to better support you?',
+  'Set at least 2 new goals for the coming quarter.',
+  'How are you planning to make meaningful progress on these goals?',
+  'Is there anything else you\'d like to raise, flag, or discuss?',
+];
+
+// Auto-generate summary and action items from review answers (BDM only)
+router.post('/generate', authenticate, requireBDM, async (req, res) => {
+  const { answers, memberName } = req.body;
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(503).json({ error: 'ANTHROPIC_API_KEY is not set in your backend .env file.' });
+  }
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const qa = Object.entries(answers || {})
+    .filter(([, v]) => v && String(v).trim())
+    .map(([i, v]) => `Q${parseInt(i)+1}. ${REVIEW_QUESTIONS[i] || ''}\nAnswer: ${v}`)
+    .join('\n\n');
+
+  const prompt = `You are a team manager reviewing a quarterly 1-1 catch-up session with ${memberName || 'a team member'}.
+
+Below are the questions and their answers from the session:
+
+${qa}
+
+Please produce two things:
+1. A concise session SUMMARY (2–4 sentences) capturing the key themes, performance sentiment, and any notable points raised.
+2. A bullet-point ACTION ITEMS list (3–6 items) of concrete next steps for ${memberName || 'the team member'} and/or management, derived directly from the answers. Each item should start with a dash (–).
+
+Respond in this exact format:
+SUMMARY:
+<summary text>
+
+ACTION ITEMS:
+– <item 1>
+– <item 2>
+...`;
+
+  try {
+    const message = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 600,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = message.content[0]?.text || '';
+    const summaryMatch = text.match(/SUMMARY:\s*([\s\S]*?)(?=ACTION ITEMS:|$)/i);
+    const actionsMatch = text.match(/ACTION ITEMS:\s*([\s\S]*)/i);
+    res.json({
+      summary: (summaryMatch?.[1] || '').trim(),
+      action_items: (actionsMatch?.[1] || '').trim(),
+    });
+  } catch (err) {
+    console.error('Claude API error:', err.message);
+    res.status(500).json({ error: 'Failed to generate summary. Check your API key and try again.' });
+  }
+});
 
 // List reviews — BDM sees all, others see own
 router.get('/', authenticate, async (req, res) => {
