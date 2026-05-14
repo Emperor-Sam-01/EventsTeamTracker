@@ -29,9 +29,9 @@ router.get('/individual/:userId', authenticate, async (req, res) => {
 
     // GP with crew distribution: own projects without crew + crew-allocated GP
     const { rows: projectRows } = await pool.query(
-      `SELECT gp, period_month, period_year FROM projects
-       WHERE assigned_to = $1 AND status IN ('confirmed','completed')
-         AND NOT EXISTS (SELECT 1 FROM project_crew WHERE project_id = id)
+      `SELECT p.gp, p.period_month, p.period_year FROM projects p
+       WHERE p.assigned_to = $1 AND p.status IN ('confirmed','completed')
+         AND NOT EXISTS (SELECT 1 FROM project_crew pc WHERE pc.project_id = p.id)
        UNION ALL
        SELECT pc.gp_allocated AS gp, p.period_month, p.period_year
        FROM project_crew pc JOIN projects p ON p.id = pc.project_id
@@ -147,9 +147,9 @@ router.get('/team', authenticate, requireBDM, async (req, res) => {
 
     // GP with crew distribution for team view
     const { rows: projects } = await pool.query(
-      `SELECT assigned_to AS user_id, gp, period_month, period_year FROM projects
-       WHERE status IN ('confirmed','completed') AND period_year = $1
-         AND NOT EXISTS (SELECT 1 FROM project_crew WHERE project_id = id)
+      `SELECT p.assigned_to AS user_id, p.gp, p.period_month, p.period_year FROM projects p
+       WHERE p.status IN ('confirmed','completed') AND p.period_year = $1
+         AND NOT EXISTS (SELECT 1 FROM project_crew pc WHERE pc.project_id = p.id)
        UNION ALL
        SELECT pc.user_id, pc.gp_allocated AS gp, p.period_month, p.period_year
        FROM project_crew pc JOIN projects p ON p.id = pc.project_id
@@ -295,9 +295,9 @@ router.get('/benchmarks', authenticate, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `WITH crew_gp AS (
-        SELECT assigned_to AS user_id, gp, period_month, period_year FROM projects
-        WHERE status IN ('confirmed','completed')
-          AND NOT EXISTS (SELECT 1 FROM project_crew WHERE project_id = id)
+        SELECT p.assigned_to AS user_id, p.gp, p.period_month, p.period_year FROM projects p
+        WHERE p.status IN ('confirmed','completed')
+          AND NOT EXISTS (SELECT 1 FROM project_crew pc WHERE pc.project_id = p.id)
         UNION ALL
         SELECT pc.user_id, pc.gp_allocated AS gp, p.period_month, p.period_year
         FROM project_crew pc JOIN projects p ON p.id = pc.project_id
@@ -342,9 +342,9 @@ router.get('/benchmarks-trend', authenticate, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `WITH crew_gp AS (
-        SELECT assigned_to AS user_id, gp, period_month, period_year FROM projects
-        WHERE status IN ('confirmed','completed')
-          AND NOT EXISTS (SELECT 1 FROM project_crew WHERE project_id = id)
+        SELECT p.assigned_to AS user_id, p.gp, p.period_month, p.period_year FROM projects p
+        WHERE p.status IN ('confirmed','completed')
+          AND NOT EXISTS (SELECT 1 FROM project_crew pc WHERE pc.project_id = p.id)
         UNION ALL
         SELECT pc.user_id, pc.gp_allocated AS gp, p.period_month, p.period_year
         FROM project_crew pc JOIN projects p ON p.id = pc.project_id
