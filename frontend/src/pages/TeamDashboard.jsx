@@ -320,6 +320,20 @@ export default function TeamDashboard() {
         </div>
       </div>
 
+      {/* External GP Shared banner — only shown when non-zero */}
+      {data?.benchmarks?.monthly_external_gp > 0 || data?.benchmarks?.ytd_external_gp > 0 ? (
+        <div className="bg-purple-50 border border-purple-200 rounded-xl px-5 py-3 flex flex-wrap gap-6">
+          <div>
+            <div className="text-xs text-purple-500 font-medium uppercase tracking-wide">External GP Shared (This Month)</div>
+            <div className="text-xl font-bold text-purple-700">{formatCurrency(data.benchmarks.monthly_external_gp)}</div>
+          </div>
+          <div>
+            <div className="text-xs text-purple-500 font-medium uppercase tracking-wide">External GP Shared (YTD)</div>
+            <div className="text-xl font-bold text-purple-700">{formatCurrency(data.benchmarks.ytd_external_gp)}</div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
         {[{ id: 'gp', label: 'GP Overview' }, { id: 'weekly', label: 'Weekly Meetings' }].map(t => (

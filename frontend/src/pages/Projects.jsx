@@ -55,6 +55,9 @@ function ProjectModal({ project, onSave, onClose }) {
   } : EMPTY);
   const [users, setUsers] = useState([]);
   const [crew, setCrew] = useState([]);
+  const [externalBrokers, setExternalBrokers] = useState(
+    Array.isArray(project?.external_brokers) ? project.external_brokers : []
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -64,13 +67,14 @@ function ProjectModal({ project, onSave, onClose }) {
       setUsers(list);
 
       if (project?.crew && project.crew.length > 0) {
-        setCrew(project.crew.map(c => ({
+        setCrew(project.crew.filter(c => !c.is_lead).map(c => ({
           user_id: c.user_id,
-          is_lead: c.is_lead,
+          is_lead: false,
           gp_allocated: c.gp_allocated || '',
         })));
-      } else if (!project?.id) {
-        // New project: pre-fill lead
+      }
+      if (!project?.id) {
+        // New project: ensure lead is set but no gp_allocated (auto-computed)
         const leadId = isBDM ? (project?.assigned_to || null) : user.id;
         if (leadId) {
           setCrew([{ user_id: leadId, is_lead: true, gp_allocated: '' }]);
@@ -104,25 +108,32 @@ function ProjectModal({ project, onSave, onClose }) {
   };
 
   const gp = (parseFloat(form.revenue) || 0) - (parseFloat(form.cost) || 0);
-  const allocatedGP = crew.reduce((s, c) => s + (parseFloat(c.gp_allocated) || 0), 0);
-  const remainingGP = gp - allocatedGP;
+  // Lead GP is the remainder after crew splits and external broker splits
+  const nonLeadAllocated = crew.reduce((s, c) => s + (parseFloat(c.gp_allocated) || 0), 0);
+  const externalAllocated = externalBrokers.reduce((s, b) => s + (parseFloat(b.gp) || 0), 0);
+  const leadGP = Math.max(0, gp - nonLeadAllocated - externalAllocated);
+  const overAllocated = nonLeadAllocated + externalAllocated > gp;
   const crewIds = crew.filter(c => c.user_id).map(c => c.user_id);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (overAllocated) { setError('Crew and external broker GP cannot exceed total project GP.'); return; }
     setSaving(true);
     setError('');
     try {
+      const leadId = isBDM ? (form.assigned_to || user.id) : user.id;
+      const leadEntry = { user_id: leadId, is_lead: true, gp_allocated: leadGP };
       const validCrew = crew.filter(c => c.user_id);
       const payload = {
         ...form,
         revenue: parseFloat(form.revenue),
         cost: parseFloat(form.cost),
-        crew: validCrew.length > 0 ? validCrew.map(c => ({
+        external_brokers: externalBrokers.filter(b => b.name?.trim()),
+        crew: [leadEntry, ...validCrew.map(c => ({
           user_id: c.user_id,
-          is_lead: !!c.is_lead,
+          is_lead: false,
           gp_allocated: parseFloat(c.gp_allocated) || 0,
-        })) : [],
+        }))],
       };
       if (project?.id) {
         await api.put(`/projects/${project.id}`, payload);
@@ -137,8 +148,7 @@ function ProjectModal({ project, onSave, onClose }) {
     }
   };
 
-  const leadEntry = crew.find(c => c.is_lead);
-  const nonLeadCrew = crew.filter(c => !c.is_lead);
+  const nonLeadCrew = crew;
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -197,10 +207,8 @@ function ProjectModal({ project, onSave, onClose }) {
           <div className="border border-gray-200 rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-700">GP Distribution</h3>
-              {allocatedGP > 0 && (
-                <span className={`text-xs font-medium ${remainingGP < -0.01 ? 'text-red-600' : 'text-gray-500'}`}>
-                  Allocated {formatCurrency(allocatedGP)} / Remaining {formatCurrency(remainingGP)}
-                </span>
+              {overAllocated && (
+                <span className="text-xs font-medium text-red-600">Crew + external GP exceeds project GP</span>
               )}
             </div>
 
@@ -218,51 +226,30 @@ function ProjectModal({ project, onSave, onClose }) {
               </div>
             )}
 
-            {/* Lead GP allocation */}
+            {/* Lead GP — auto-computed as remainder */}
             <div className="flex items-center gap-2 bg-orange-50 rounded-lg px-3 py-2">
               <span className="text-xs font-medium text-orange-700 flex-1">
-                {leadEntry
-                  ? (users.find(u => u.id === leadEntry.user_id)?.name || (isBDM ? 'Project Lead' : user.name)) + ' (Lead)'
-                  : isBDM ? 'Select a project lead above' : user.name + ' (Lead)'}
+                {isBDM
+                  ? (users.find(u => u.id === form.assigned_to)?.name || 'Project Lead')
+                  : user.name} (Lead — auto)
               </span>
               <span className="text-xs text-gray-500">GP $</span>
-              <input
-                type="number"
-                className="input w-28 text-sm"
-                placeholder="0"
-                min="0"
-                step="0.01"
-                value={leadEntry?.gp_allocated || ''}
-                onChange={e => {
-                  setCrew(prev => {
-                    const idx = prev.findIndex(c => c.is_lead);
-                    if (idx === -1) {
-                      const leadId = isBDM ? (form.assigned_to || null) : user.id;
-                      return [...prev, { user_id: leadId, is_lead: true, gp_allocated: e.target.value }];
-                    }
-                    const updated = [...prev];
-                    updated[idx] = { ...updated[idx], gp_allocated: e.target.value };
-                    return updated;
-                  });
-                }}
-              />
+              <div className={`input w-28 text-sm bg-orange-50 border-orange-200 font-semibold ${overAllocated ? 'text-red-600' : 'text-orange-700'}`}>
+                {leadGP.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
             </div>
 
-            {/* Non-lead crew */}
-            {nonLeadCrew.map((member, i) => {
-              const actualIdx = crew.findIndex((c, ci) => !c.is_lead && crew.filter(x => !x.is_lead).indexOf(c) === i);
-              const crewIdx = crew.indexOf(member);
-              return (
-                <CrewRow
-                  key={crewIdx}
-                  member={member}
-                  users={users}
-                  onUpdate={updated => updateCrewMember(crewIdx, updated)}
-                  onRemove={() => removeCrewMember(crewIdx)}
-                  disabledIds={crewIds}
-                />
-              );
-            })}
+            {/* Event crew members */}
+            {nonLeadCrew.map((member, crewIdx) => (
+              <CrewRow
+                key={crewIdx}
+                member={member}
+                users={users}
+                onUpdate={updated => updateCrewMember(crewIdx, updated)}
+                onRemove={() => removeCrewMember(crewIdx)}
+                disabledIds={crewIds}
+              />
+            ))}
 
             <button
               type="button"
@@ -272,17 +259,52 @@ function ProjectModal({ project, onSave, onClose }) {
               + Add Event Crew Member
             </button>
 
-            {allocatedGP > 0 && (
+            {/* External Co-Brokers */}
+            {externalBrokers.length > 0 && (
+              <div className="border-t border-gray-100 pt-3 space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">External Co-Brokers</p>
+                {externalBrokers.map((broker, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input
+                      className="input flex-1 text-sm"
+                      placeholder="Co-broker name / company"
+                      value={broker.name}
+                      onChange={e => setExternalBrokers(prev => prev.map((b, j) => j === i ? { ...b, name: e.target.value } : b))}
+                    />
+                    <span className="text-xs text-gray-500">GP $</span>
+                    <input
+                      type="number"
+                      className="input w-28 text-sm"
+                      placeholder="0"
+                      min="0"
+                      step="0.01"
+                      value={broker.gp}
+                      onChange={e => setExternalBrokers(prev => prev.map((b, j) => j === i ? { ...b, gp: e.target.value } : b))}
+                    />
+                    <button type="button" onClick={() => setExternalBrokers(prev => prev.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500 px-1">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setExternalBrokers(prev => [...prev, { name: '', gp: '' }])}
+              className="text-sm text-purple-600 hover:text-purple-700 font-medium flex items-center gap-1"
+            >
+              + Add External Co-Broker
+            </button>
+
+            {(nonLeadAllocated > 0 || externalAllocated > 0) && (
               <div className="pt-1">
                 <div className="flex justify-between text-xs text-gray-500 mb-1">
-                  <span>GP Allocated</span>
-                  <span>{formatCurrency(allocatedGP)} of {formatCurrency(gp)}</span>
+                  <span>Lead {formatCurrency(leadGP)} · Crew {formatCurrency(nonLeadAllocated)} · External {formatCurrency(externalAllocated)}</span>
+                  <span>of {formatCurrency(gp)}</span>
                 </div>
-                <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${allocatedGP > gp ? 'bg-red-500' : 'bg-green-500'}`}
-                    style={{ width: `${Math.min(100, gp > 0 ? (allocatedGP / gp) * 100 : 0)}%` }}
-                  />
+                <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden flex">
+                  <div className="h-full bg-orange-400 transition-all" style={{ width: `${gp > 0 ? (leadGP / gp) * 100 : 0}%` }} />
+                  <div className="h-full bg-brand-500 transition-all" style={{ width: `${gp > 0 ? (nonLeadAllocated / gp) * 100 : 0}%` }} />
+                  <div className="h-full bg-purple-400 transition-all" style={{ width: `${gp > 0 ? (externalAllocated / gp) * 100 : 0}%` }} />
                 </div>
               </div>
             )}

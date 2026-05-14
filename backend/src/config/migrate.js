@@ -202,6 +202,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS bdm_id INTEGER REFERENCES users(id) O
 ALTER TABLE individual_reviews ADD COLUMN IF NOT EXISTS catch_up_date DATE;
 ALTER TABLE individual_reviews ADD COLUMN IF NOT EXISTS location VARCHAR(200);
 ALTER TABLE individual_reviews ADD COLUMN IF NOT EXISTS spend NUMERIC(10,2);
+
+-- External Co-Broker GP splits on projects
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS external_brokers JSONB NOT NULL DEFAULT '[]';
 `;
 
 async function migrate() {

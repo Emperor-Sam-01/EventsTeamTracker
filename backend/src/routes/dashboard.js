@@ -281,6 +281,24 @@ router.get('/team', authenticate, requireBDM, async (req, res) => {
     const projectedTeamNP = m > 0 ? (ytdTeamNP / m) * 12 : 0;
     const avgYtdGP = rankable.length ? ytdTeamGP / rankable.length : 0;
 
+    // External GP shared via co-brokers (monthly and YTD)
+    const { rows: extRows } = await pool.query(
+      `SELECT
+        COALESCE(SUM((b->>'gp')::numeric) FILTER (
+          WHERE EXTRACT(MONTH FROM COALESCE(p.event_date, p.confirmation_date)) = $2
+            AND EXTRACT(YEAR  FROM COALESCE(p.event_date, p.confirmation_date)) = $1
+        ), 0) AS monthly_external_gp,
+        COALESCE(SUM((b->>'gp')::numeric) FILTER (
+          WHERE EXTRACT(YEAR FROM COALESCE(p.event_date, p.confirmation_date)) = $1
+        ), 0) AS ytd_external_gp
+       FROM projects p,
+         jsonb_array_elements(COALESCE(p.external_brokers, '[]'::jsonb)) AS b
+       WHERE p.status IN ('confirmed','completed')`,
+      [y, m]
+    );
+    const monthlyExternalGP = parseFloat(extRows[0]?.monthly_external_gp || 0);
+    const ytdExternalGP = parseFloat(extRows[0]?.ytd_external_gp || 0);
+
     res.json({
       members,
       benchmarks: {
@@ -289,6 +307,8 @@ router.get('/team', authenticate, requireBDM, async (req, res) => {
         ytd_team_gp: ytdTeamGP, ytd_team_np: ytdTeamNP,
         projected_team_gp: projectedTeamGP, projected_team_np: projectedTeamNP,
         avg_ytd_gp: avgYtdGP,
+        monthly_external_gp: monthlyExternalGP,
+        ytd_external_gp: ytdExternalGP,
       },
       period: { month: m, year: y },
     });

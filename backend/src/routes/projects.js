@@ -77,7 +77,7 @@ router.get('/:id', authenticate, async (req, res) => {
 
 // Create project
 router.post('/', authenticate, async (req, res) => {
-  const { title, client_name, project_type, event_date, confirmation_date, revenue, cost, status, assigned_to, project_google_link, notes, crew, cancellation_reason } = req.body;
+  const { title, client_name, project_type, event_date, confirmation_date, revenue, cost, status, assigned_to, project_google_link, notes, crew, cancellation_reason, external_brokers } = req.body;
   if (!title || !client_name || revenue == null || cost == null) {
     return res.status(400).json({ error: 'title, client_name, revenue, cost are required' });
   }
@@ -86,14 +86,15 @@ router.post('/', authenticate, async (req, res) => {
   const periodDate = confirmation_date ? new Date(confirmation_date) : new Date();
   const pMonth = periodDate.getMonth() + 1;
   const pYear = periodDate.getFullYear();
+  const extBrokers = Array.isArray(external_brokers) ? external_brokers : [];
 
   const db = await pool.connect();
   try {
     await db.query('BEGIN');
     const { rows } = await db.query(
-      `INSERT INTO projects (title, client_name, project_type, event_date, confirmation_date, revenue, cost, status, assigned_to, period_month, period_year, project_google_link, notes, cancellation_reason)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-      [title, client_name, project_type || 'Others', event_date || null, confirmation_date || null, revenue, cost, status || 'confirmed', assignee, pMonth, pYear, project_google_link || null, notes || null, cancellation_reason || null]
+      `INSERT INTO projects (title, client_name, project_type, event_date, confirmation_date, revenue, cost, status, assigned_to, period_month, period_year, project_google_link, notes, cancellation_reason, external_brokers)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      [title, client_name, project_type || 'Others', event_date || null, confirmation_date || null, revenue, cost, status || 'confirmed', assignee, pMonth, pYear, project_google_link || null, notes || null, cancellation_reason || null, JSON.stringify(extBrokers)]
     );
     const project = rows[0];
     await saveCrew(db, project.id, crew, assignee);
@@ -110,7 +111,7 @@ router.post('/', authenticate, async (req, res) => {
 
 // Update project
 router.put('/:id', authenticate, async (req, res) => {
-  const { title, client_name, project_type, event_date, confirmation_date, revenue, cost, status, assigned_to, project_google_link, notes, crew, cancellation_reason } = req.body;
+  const { title, client_name, project_type, event_date, confirmation_date, revenue, cost, status, assigned_to, project_google_link, notes, crew, cancellation_reason, external_brokers } = req.body;
   const db = await pool.connect();
   try {
     const { rows: existing } = await db.query('SELECT * FROM projects WHERE id = $1', [req.params.id]);
@@ -127,14 +128,18 @@ router.put('/:id', authenticate, async (req, res) => {
     const pYear = newConfirmation ? periodDate.getFullYear() : p.period_year;
     const newClientName = client_name ?? p.client_name;
     const newAssignee = isBDM && assigned_to ? assigned_to : p.assigned_to;
+    const newExtBrokers = external_brokers !== undefined
+      ? JSON.stringify(Array.isArray(external_brokers) ? external_brokers : [])
+      : p.external_brokers;
 
     await db.query('BEGIN');
     const { rows } = await db.query(
       `UPDATE projects SET
         title=$1, client_name=$2, project_type=$3, event_date=$4, confirmation_date=$5,
         revenue=$6, cost=$7, status=$8, assigned_to=$9, period_month=$10, period_year=$11,
-        project_google_link=$12, notes=$13, cancellation_reason=$14, updated_at=NOW()
-       WHERE id=$15 RETURNING *`,
+        project_google_link=$12, notes=$13, cancellation_reason=$14, external_brokers=$15,
+        updated_at=NOW()
+       WHERE id=$16 RETURNING *`,
       [
         title ?? p.title, newClientName, project_type ?? p.project_type,
         event_date !== undefined ? (event_date || null) : p.event_date, newConfirmation,
@@ -143,6 +148,7 @@ router.put('/:id', authenticate, async (req, res) => {
         project_google_link !== undefined ? project_google_link : p.project_google_link,
         notes !== undefined ? notes : p.notes,
         cancellation_reason !== undefined ? cancellation_reason : p.cancellation_reason,
+        newExtBrokers,
         req.params.id,
       ]
     );
