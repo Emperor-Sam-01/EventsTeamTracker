@@ -30,8 +30,8 @@ router.get('/', authenticate, async (req, res) => {
     params.push(filterUserId);
     conditions.push(`(p.assigned_to = $${params.length} OR EXISTS (SELECT 1 FROM project_crew pc WHERE pc.project_id = p.id AND pc.user_id = $${params.length}))`);
   }
-  if (month) { params.push(parseInt(month)); conditions.push(`p.period_month = $${params.length}`); }
-  if (year)  { params.push(parseInt(year));  conditions.push(`p.period_year = $${params.length}`); }
+  if (month) { params.push(parseInt(month)); conditions.push(`EXTRACT(MONTH FROM p.event_date) = $${params.length}`); }
+  if (year)  { params.push(parseInt(year));  conditions.push(`EXTRACT(YEAR FROM p.event_date) = $${params.length}`); }
   if (status){ params.push(status);          conditions.push(`p.status = $${params.length}`); }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
