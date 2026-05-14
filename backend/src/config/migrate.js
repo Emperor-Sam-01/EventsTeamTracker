@@ -209,6 +209,9 @@ ALTER TABLE projects ADD COLUMN IF NOT EXISTS external_brokers JSONB NOT NULL DE
 -- Manpower / Co-broke client fields
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS project_lead_name VARCHAR(200);
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS project_entity VARCHAR(100);
+
+-- Resignation tracking for staff
+ALTER TABLE users ADD COLUMN IF NOT EXISTS resignation_date DATE;
 `;
 
 async function migrate() {

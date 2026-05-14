@@ -52,7 +52,7 @@ const EMPTY = {
   join_month: new Date().getMonth() + 1,
   join_year: new Date().getFullYear(),
   salary: '', cpf_type: 'cpf', cpf_rate: '0.17', permit_cost: '0',
-  gp_target_t1: '', bdm_id: '',
+  gp_target_t1: '', bdm_id: '', resignation_date: '',
 };
 
 function UserModal({ user, onSave, onClose, bdmList }) {
@@ -73,6 +73,7 @@ function UserModal({ user, onSave, onClose, bdmList }) {
       permit_cost: user.permit_cost != null ? String(user.permit_cost) : '0',
       gp_target_t1: user.gp_target_t1 != null ? String(user.gp_target_t1) : '',
       bdm_id: user.bdm_id != null ? String(user.bdm_id) : '',
+      resignation_date: user.resignation_date ? user.resignation_date.split('T')[0] : '',
     };
   };
 
@@ -108,6 +109,7 @@ function UserModal({ user, onSave, onClose, bdmList }) {
         permit_cost: isExecPA ? 0 : (!isCPF ? parseFloat(form.permit_cost) || 0 : 0),
         gp_target_t1: (showTargets && form.gp_target_t1 !== '') ? parseFloat(form.gp_target_t1) : null,
         bdm_id: (!isExecPA && form.role !== 'bdm' && form.bdm_id !== '') ? parseInt(form.bdm_id) : null,
+        resignation_date: form.resignation_date || null,
       };
       if (form.password) payload.password = form.password;
       if (user?.id) {
@@ -184,6 +186,19 @@ function UserModal({ user, onSave, onClose, bdmList }) {
                   min="2000" max="2099" required
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="label">Resignation Date (if applicable)</label>
+              <input
+                type="date"
+                className="input"
+                value={form.resignation_date}
+                onChange={e => setForm(f => ({ ...f, resignation_date: e.target.value }))}
+              />
+              {form.resignation_date && (
+                <p className="text-xs text-amber-600 mt-1">Staff will not appear in crew assignments for projects on or after this date.</p>
+              )}
             </div>
 
             {isExecPA && (

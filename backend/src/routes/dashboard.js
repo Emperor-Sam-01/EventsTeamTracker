@@ -147,7 +147,7 @@ router.get('/team', authenticate, requireBDM, async (req, res) => {
 
   try {
     const { rows: users } = await pool.query(
-      `SELECT id, name, role, join_date, salary, cpf_type, cpf_rate, permit_cost
+      `SELECT id, name, role, join_date, resignation_date, salary, cpf_type, cpf_rate, permit_cost
        FROM users WHERE is_active = TRUE AND role != 'exec_pa' ORDER BY name`
     );
 
@@ -197,7 +197,8 @@ router.get('/team', authenticate, requireBDM, async (req, res) => {
         .filter(p => p.period_month <= m)
         .reduce((sum, p) => sum + parseFloat(p.gp || 0), 0);
 
-      const monthlyFixedCost = (() => {
+      // Base monthly cost (when employed)
+      const baseMonthlyFixedCost = (() => {
         if (user.role === 'exec_pa') return 0;
         const sal = parseFloat(user.salary) || 0;
         const cpfCost = user.cpf_type === 'cpf'
@@ -207,7 +208,18 @@ router.get('/team', authenticate, requireBDM, async (req, res) => {
                    : ['pe', 'spe'].includes(user.role) ? 1300 : 1900;
         return sal + cpfCost + mgmt;
       })();
-      const ytdNP = ytdGP - monthlyFixedCost * m;
+      // Resignation-aware adjustments
+      const resignDate = user.resignation_date ? new Date(user.resignation_date) : null;
+      const firstOfMonth = new Date(y, m - 1, 1);
+      const monthlyFixedCost = (resignDate && resignDate < firstOfMonth) ? 0 : baseMonthlyFixedCost;
+      // Employed months in year (inclusive of resignation month)
+      const employedMonths = (() => {
+        if (!resignDate) return m;
+        if (resignDate.getFullYear() > y) return m;
+        if (resignDate.getFullYear() < y) return 0;
+        return Math.min(m, resignDate.getMonth() + 1);
+      })();
+      const ytdNP = ytdGP - baseMonthlyFixedCost * employedMonths;
 
       const gpForTier = (user.role === 'pe' || user.role === 'spe') ? quarterlyGP : monthlyGP;
       const tier = getGPTier(user.role, gpForTier);

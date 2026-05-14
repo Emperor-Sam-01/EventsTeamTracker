@@ -12,7 +12,7 @@ router.get('/', authenticate, async (req, res) => {
   try {
     if (isBDM) {
       const { rows } = await pool.query(
-        `SELECT id, name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, bdm_id, is_active, created_at
+        `SELECT id, name, email, role, join_date, resignation_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, bdm_id, is_active, created_at
          FROM users ORDER BY name`
       );
       res.json(rows.map(u => ({
@@ -22,7 +22,7 @@ router.get('/', authenticate, async (req, res) => {
       })));
     } else {
       const { rows } = await pool.query(
-        `SELECT id, name, role, is_active FROM users WHERE is_active = TRUE AND role != 'exec_pa' ORDER BY name`
+        `SELECT id, name, role, is_active, resignation_date FROM users WHERE is_active = TRUE AND role != 'exec_pa' ORDER BY name`
       );
       res.json(rows);
     }
@@ -58,19 +58,19 @@ router.get('/:id', authenticate, async (req, res) => {
 
 // Create user (BDM only)
 router.post('/', authenticate, requireBDM, async (req, res) => {
-  const { name, email, password, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1 } = req.body;
+  const { name, email, password, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, resignation_date } = req.body;
   if (!name || !email || !password || !role || !join_date) {
     return res.status(400).json({ error: 'name, email, password, role, join_date are required' });
   }
   try {
     const hash = await bcrypt.hash(password, 10);
     const { rows } = await pool.query(
-      `INSERT INTO users (name, email, password_hash, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, name, email, role, join_date`,
+      `INSERT INTO users (name, email, password_hash, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, resignation_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, name, email, role, join_date`,
       [
         name, email.toLowerCase().trim(), hash, role, join_date,
         salary || 0, cpf_type || 'cpf', cpf_rate || 0.17, permit_cost || 0,
-        gp_target_t1 || null,
+        gp_target_t1 || null, resignation_date || null,
       ]
     );
     res.status(201).json(rows[0]);
@@ -83,7 +83,7 @@ router.post('/', authenticate, requireBDM, async (req, res) => {
 
 // Update user (BDM only)
 router.put('/:id', authenticate, requireBDM, async (req, res) => {
-  const { name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, bdm_id, is_active } = req.body;
+  const { name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, bdm_id, is_active, resignation_date } = req.body;
   try {
     const { rows } = await pool.query(
       `UPDATE users SET
@@ -98,9 +98,10 @@ router.put('/:id', authenticate, requireBDM, async (req, res) => {
         gp_target_t1 = $9,
         bdm_id = $10,
         is_active = COALESCE($11, is_active),
+        resignation_date = $12,
         updated_at = NOW()
-       WHERE id = $12 RETURNING id, name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, bdm_id, is_active`,
-      [name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1 ?? null, bdm_id ?? null, is_active, req.params.id]
+       WHERE id = $13 RETURNING id, name, email, role, join_date, resignation_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1, bdm_id, is_active`,
+      [name, email, role, join_date, salary, cpf_type, cpf_rate, permit_cost, gp_target_t1 ?? null, bdm_id ?? null, is_active, resignation_date ?? null, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'User not found' });
     res.json(rows[0]);

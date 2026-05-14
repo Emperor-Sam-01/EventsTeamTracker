@@ -63,9 +63,8 @@ function ProjectModal({ project, onSave, onClose }) {
 
   useEffect(() => {
     api.get('/users').then(r => {
-      const list = r.data.filter(u => u.is_active !== false && u.role !== 'exec_pa');
-      setUsers(list);
-
+      setUsers(r.data.filter(u => u.is_active !== false && u.role !== 'exec_pa'));
+      // Crew state holds ONLY non-lead entries; lead GP is auto-computed
       if (project?.crew && project.crew.length > 0) {
         setCrew(project.crew.filter(c => !c.is_lead).map(c => ({
           user_id: c.user_id,
@@ -73,13 +72,7 @@ function ProjectModal({ project, onSave, onClose }) {
           gp_allocated: c.gp_allocated || '',
         })));
       }
-      if (!project?.id) {
-        // New project: ensure lead is set but no gp_allocated (auto-computed)
-        const leadId = isBDM ? (project?.assigned_to || null) : user.id;
-        if (leadId) {
-          setCrew([{ user_id: leadId, is_lead: true, gp_allocated: '' }]);
-        }
-      }
+      // New project: crew starts empty — lead is auto-computed
     }).catch(console.error);
   }, []);
 
@@ -108,8 +101,15 @@ function ProjectModal({ project, onSave, onClose }) {
   };
 
   const gp = (parseFloat(form.revenue) || 0) - (parseFloat(form.cost) || 0);
+
+  // Filter out resigned staff (resigned before event date, or before today if no event date)
+  const referenceDate = form.event_date ? new Date(form.event_date + 'T12:00:00') : new Date();
+  const activeUsers = users.filter(u =>
+    !u.resignation_date || new Date(u.resignation_date + 'T12:00:00') >= referenceDate
+  );
+
   // Lead GP is the remainder after crew splits and external broker splits
-  const nonLeadAllocated = crew.reduce((s, c) => s + (parseFloat(c.gp_allocated) || 0), 0);
+  const nonLeadAllocated = crew.filter(c => !c.is_lead).reduce((s, c) => s + (parseFloat(c.gp_allocated) || 0), 0);
   const externalAllocated = externalBrokers.reduce((s, b) => s + (parseFloat(b.gp) || 0), 0);
   const leadGP = Math.max(0, gp - nonLeadAllocated - externalAllocated);
   const overAllocated = nonLeadAllocated + externalAllocated > gp;
@@ -148,7 +148,7 @@ function ProjectModal({ project, onSave, onClose }) {
     }
   };
 
-  const nonLeadCrew = crew;
+  const nonLeadCrew = crew.filter(c => !c.is_lead);
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -212,7 +212,7 @@ function ProjectModal({ project, onSave, onClose }) {
               )}
             </div>
 
-            {isBDM && users.length > 0 && (
+            {isBDM && activeUsers.length > 0 && (
               <div>
                 <label className="label text-xs">Project Lead (Assign To)</label>
                 <select
@@ -221,7 +221,7 @@ function ProjectModal({ project, onSave, onClose }) {
                   onChange={e => handleAssigneeChange(e.target.value)}
                 >
                   <option value="">Select project lead...</option>
-                  {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role.toUpperCase()})</option>)}
+                  {activeUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role.toUpperCase()})</option>)}
                 </select>
               </div>
             )}
@@ -230,7 +230,7 @@ function ProjectModal({ project, onSave, onClose }) {
             <div className="flex items-center gap-2 bg-orange-50 rounded-lg px-3 py-2">
               <span className="text-xs font-medium text-orange-700 flex-1">
                 {isBDM
-                  ? (users.find(u => u.id === form.assigned_to)?.name || 'Project Lead')
+                  ? (activeUsers.find(u => u.id === form.assigned_to)?.name || users.find(u => u.id === form.assigned_to)?.name || 'Project Lead')
                   : user.name} (Lead — auto)
               </span>
               <span className="text-xs text-gray-500">GP $</span>
@@ -244,7 +244,7 @@ function ProjectModal({ project, onSave, onClose }) {
               <CrewRow
                 key={crewIdx}
                 member={member}
-                users={users}
+                users={activeUsers}
                 onUpdate={updated => updateCrewMember(crewIdx, updated)}
                 onRemove={() => removeCrewMember(crewIdx)}
                 disabledIds={crewIds}
