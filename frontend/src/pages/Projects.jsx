@@ -359,6 +359,7 @@ export default function Projects() {
   const [deleting, setDeleting] = useState(null);
   const { month, year } = getMonthYear();
   const [filter, setFilter] = useState({ month, year, status: '' });
+  const [hideEnded, setHideEnded] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -381,6 +382,10 @@ export default function Projects() {
   };
 
   useEffect(load, [filter]);
+
+  const displayProjects = hideEnded
+    ? projects.filter(p => !['completed', 'cancelled'].includes(p.status))
+    : projects;
 
   const totalGP = projects
     .filter(p => ['confirmed', 'completed'].includes(p.status))
@@ -408,6 +413,12 @@ export default function Projects() {
           <option value="completed">Completed</option>
           <option value="cancelled">Cancelled</option>
         </select>
+        <button
+          onClick={() => setHideEnded(h => !h)}
+          className={`text-xs px-3 py-1.5 rounded-lg font-medium border transition-colors ${hideEnded ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+        >
+          {hideEnded ? 'Showing active only' : 'Hide completed & cancelled'}
+        </button>
         <div className="ml-auto text-sm font-semibold text-gray-700">
           Total GP: <span className="text-green-600">{formatCurrency(totalGP)}</span>
         </div>
@@ -415,7 +426,7 @@ export default function Projects() {
 
       {loading ? (
         <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" /></div>
-      ) : projects.length === 0 ? (
+      ) : displayProjects.length === 0 ? (
         <div className="card text-center py-12 text-gray-400">No projects found for this period.</div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
@@ -436,7 +447,7 @@ export default function Projects() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {projects.map(p => (
+              {displayProjects.map(p => (
                 <tr key={p.id} className="hover:bg-gray-50">
                   <td className="py-3 px-4 font-medium text-gray-900">
                     <div>{p.title}</div>

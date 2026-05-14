@@ -472,6 +472,67 @@ function ConvertModal({ client, onSave, onClose }) {
   );
 }
 
+// ─── Move Client Modal ────────────────────────────────────────────────────────
+const LIST_TYPE_OPTIONS = [
+  { value: 'prospect',  label: 'Prospects' },
+  { value: 'pipeline',  label: 'Pipeline' },
+  { value: 'current',   label: 'Current Clients' },
+  { value: 'lost',      label: 'Lost' },
+  { value: 'completed', label: 'Completed' },
+];
+
+function MoveClientModal({ client, onClose, onMoveTo }) {
+  const [target, setTarget] = useState('');
+  const [reason, setReason] = useState('');
+  const options = LIST_TYPE_OPTIONS.filter(o => o.value !== client.list_type);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl">
+        <div className="p-5 border-b">
+          <h2 className="font-semibold text-gray-900">Move Client</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            <strong>{client.company_name}</strong> is currently in <strong>{LIST_LABELS[client.list_type]}</strong>
+          </p>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="label">Move to</label>
+            <select className="input" value={target} onChange={e => setTarget(e.target.value)}>
+              <option value="">Select new status...</option>
+              {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          {target === 'lost' && (
+            <div>
+              <label className="label">Reason for Loss <span className="text-red-500">*</span></label>
+              <textarea className="input" rows={3}
+                placeholder="e.g. Client chose a competitor, budget constraints..."
+                value={reason} onChange={e => setReason(e.target.value)} />
+            </div>
+          )}
+          {['current','pipeline','prospect'].includes(client.list_type) && target === 'current' && (
+            <p className="text-xs text-amber-600 bg-amber-50 rounded px-3 py-2">This will open the project conversion form to create or confirm a project.</p>
+          )}
+          {['completed','current'].includes(client.list_type) && ['pipeline','prospect'].includes(target) && (
+            <p className="text-xs text-amber-600 bg-amber-50 rounded px-3 py-2">Any confirmed project linked to this client will be set to Pending and will not count toward GP.</p>
+          )}
+        </div>
+        <div className="flex gap-2 px-5 pb-5">
+          <button
+            onClick={() => { if (!target) return; if (target === 'lost' && !reason.trim()) return; onMoveTo(target, reason); }}
+            disabled={!target || (target === 'lost' && !reason.trim())}
+            className="btn-primary flex-1"
+          >
+            Confirm Move
+          </button>
+          <button onClick={onClose} className="btn-secondary">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Weekly meeting section ───────────────────────────────────────────────────
 function WeeklyMeetingSection({ clientCounts }) {
   const { user } = useAuth();
@@ -650,6 +711,8 @@ export default function Clients() {
   const [editing, setEditing]                 = useState(null);
   const [converting, setConverting]           = useState(null);
   const [userFilter, setUserFilter]           = useState('');
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [moveClient, setMoveClient] = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -661,6 +724,23 @@ export default function Clients() {
   }, [userFilter]);
 
   useEffect(load, [load]);
+
+  const handleMoveConfirm = (target, reason) => {
+    setShowMoveModal(false);
+    if (target === 'current') {
+      setConverting(moveClient);
+      setShowConvert(true);
+    } else if (target === 'pipeline') {
+      setConverting(moveClient);
+      setShowConvertPipeline(true);
+    } else if (target === 'lost') {
+      api.put(`/clients/${moveClient.id}`, { list_type: 'lost', loss_reason: reason })
+        .then(() => load()).catch(() => alert('Failed to update'));
+    } else {
+      api.put(`/clients/${moveClient.id}`, { list_type: target })
+        .then(() => load()).catch(() => alert('Failed to update'));
+    }
+  };
 
   useEffect(() => {
     api.get('/users')
@@ -747,11 +827,27 @@ export default function Clients() {
                     </button>
                   </div>
                 )}
-                {type === 'current' && (
+                {type === 'current' && !isBDM && (
                   <div className="mt-2 text-xs text-gray-400 text-center italic">Manage in Projects tab</div>
                 )}
-                {type === 'completed' && (
+                {type === 'completed' && !isBDM && (
                   <div className="mt-2 text-xs text-green-600 text-center font-medium">✓ Project completed</div>
+                )}
+                {isBDM && !['prospect','pipeline'].includes(type) && (
+                  <button
+                    onClick={()=>{ setMoveClient(c); setShowMoveModal(true); }}
+                    className="mt-2 w-full text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md py-1.5 font-medium transition-colors"
+                  >
+                    ↕ Move client
+                  </button>
+                )}
+                {isBDM && ['prospect','pipeline'].includes(type) && (
+                  <button
+                    onClick={()=>{ setMoveClient(c); setShowMoveModal(true); }}
+                    className="mt-1.5 w-full text-xs text-gray-500 hover:text-gray-700 rounded-md py-1 font-medium transition-colors"
+                  >
+                    ↕ Move to other status
+                  </button>
                 )}
               </div>
             );
@@ -828,6 +924,13 @@ export default function Clients() {
       )}
       {showConvertLost && converting && (
         <ConvertToLostModal client={converting} onSave={()=>{setShowConvertLost(false);setConverting(null);load();}} onClose={()=>{setShowConvertLost(false);setConverting(null);}} />
+      )}
+      {showMoveModal && moveClient && (
+        <MoveClientModal
+          client={moveClient}
+          onClose={() => { setShowMoveModal(false); setMoveClient(null); }}
+          onMoveTo={handleMoveConfirm}
+        />
       )}
     </div>
   );

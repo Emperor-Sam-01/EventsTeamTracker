@@ -86,6 +86,16 @@ router.put('/:id', authenticate, async (req, res) => {
     }
 
     const c = existing[0];
+    const newListType = list_type ?? c.list_type;
+    // When moving a client away from 'current', update linked project status
+    if (c.list_type === 'current' && newListType !== 'current') {
+      const newProjectStatus = newListType === 'lost' ? 'cancelled' : 'pending';
+      await pool.query(
+        `UPDATE projects SET status = $1, updated_at = NOW()
+         WHERE assigned_to = $2 AND client_name = $3 AND status = 'confirmed'`,
+        [newProjectStatus, c.user_id, c.company_name]
+      );
+    }
     const { rows } = await pool.query(
       `UPDATE clients SET
         company_name = $1, project_name = $2, project_type = $3,
