@@ -587,6 +587,79 @@ function GenerateSummaryBlock({ answers, memberName, summary, actionItems, onGen
   );
 }
 
+function DeleteReviewModal({ review, onClose, onDeleted }) {
+  const [step, setStep] = useState(1);
+  const [typed, setTyped] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState('');
+  const label = review.user_name
+    ? `${review.user_name} — Q${review.quarter} ${review.year}`
+    : `Q${review.quarter} ${review.year} Catch-Up`;
+  const confirmed = typed === label;
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setError('');
+    try {
+      await api.delete(`/reviews/${review.id}`);
+      onDeleted();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to delete. Please try again.');
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+        <div className="p-5 border-b flex items-start gap-3">
+          <div className="text-2xl">⚠️</div>
+          <div>
+            <h2 className="font-semibold text-gray-900">Delete Catch-Up Session</h2>
+            <p className="text-xs text-red-600 mt-0.5 font-medium">This action cannot be undone.</p>
+          </div>
+        </div>
+
+        {step === 1 ? (
+          <div className="p-5 space-y-4">
+            <p className="text-sm text-gray-700">
+              You are about to permanently delete the catch-up record for <strong>{label}</strong>.
+              All answers, summary, and action items will be lost.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setStep(2)} className="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-xl px-4 py-2 transition-colors">
+                Yes, I want to delete this session
+              </button>
+              <button onClick={onClose} className="btn-secondary">Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div className="p-5 space-y-4">
+            <p className="text-sm text-gray-700">To confirm, type the session label exactly:</p>
+            <div className="bg-gray-100 rounded-lg px-4 py-2 text-sm font-mono font-semibold text-gray-800 select-all">{label}</div>
+            <input
+              type="text" className="input" autoFocus
+              placeholder="Type the label above to confirm…"
+              value={typed} onChange={e => setTyped(e.target.value)}
+            />
+            {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={handleDelete}
+                disabled={!confirmed || deleting}
+                className={`flex-1 text-sm font-medium rounded-xl px-4 py-2 transition-colors ${confirmed ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+              >
+                {deleting ? 'Deleting…' : 'Permanently Delete'}
+              </button>
+              <button onClick={onClose} className="btn-secondary">Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ReviewSection() {
   const { user } = useAuth();
   const isBDM = user.role === 'bdm';
@@ -601,6 +674,7 @@ function ReviewSection() {
   const [form, setForm] = useState({ user_id: '', quarter: currentQ, year: now.getFullYear(), answers: {}, summary: '', action_items: '', catch_up_date: today, location: '', spend: '' });
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const load = () => {
     api.get('/reviews').then(r => setReviews(r.data)).catch(console.error);
@@ -773,6 +847,7 @@ function ReviewSection() {
     const ratingNum = parseInt(selected.answers?.[1]);
     const ratingColor = ratingNum >= 8 ? 'text-green-600' : ratingNum >= 5 ? 'text-amber-500' : 'text-red-500';
     return (
+    <>
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-gray-900">
@@ -780,6 +855,14 @@ function ReviewSection() {
           </h2>
           <div className="flex gap-2">
             {isBDM && <button onClick={() => editReview(selected)} className="btn-secondary text-sm">Edit</button>}
+            {isBDM && (
+              <button
+                onClick={() => setDeleteTarget(selected)}
+                className="text-sm px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors font-medium"
+              >
+                🗑 Delete
+              </button>
+            )}
             <button onClick={() => setSelected(null)} className="btn-secondary text-sm">← Back</button>
           </div>
         </div>
@@ -844,10 +927,19 @@ function ReviewSection() {
           </div>
         )}
       </div>
+      {deleteTarget && (
+        <DeleteReviewModal
+          review={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={() => { setDeleteTarget(null); setSelected(null); load(); }}
+        />
+      )}
+    </>
     );
   }
 
   return (
+    <>
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-gray-900">1-1 Catch-Up Reviews</h2>
@@ -898,6 +990,14 @@ function ReviewSection() {
         </div>
       )}
     </div>
+    {deleteTarget && (
+      <DeleteReviewModal
+        review={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={() => { setDeleteTarget(null); load(); }}
+      />
+    )}
+    </>
   );
 }
 

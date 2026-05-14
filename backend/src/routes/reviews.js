@@ -112,4 +112,13 @@ router.post('/', authenticate, requireBDM, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Server error' }); }
 });
 
+// Delete a review (BDM only)
+router.delete('/:id', authenticate, requireBDM, async (req, res) => {
+  try {
+    const { rowCount } = await pool.query('DELETE FROM individual_reviews WHERE id = $1', [req.params.id]);
+    if (!rowCount) return res.status(404).json({ error: 'Review not found' });
+    res.json({ message: 'Deleted' });
+  } catch (err) { res.status(500).json({ error: 'Server error' }); }
+});
+
 module.exports = router;
