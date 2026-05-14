@@ -121,7 +121,7 @@ router.put('/:id', authenticate, async (req, res) => {
     }
     const p = existing[0];
     const newStatus = status ?? p.status;
-    const newConfirmation = confirmation_date !== undefined ? confirmation_date : p.confirmation_date;
+    const newConfirmation = confirmation_date !== undefined ? (confirmation_date || null) : p.confirmation_date;
     const periodDate = newConfirmation ? new Date(newConfirmation) : new Date();
     const pMonth = newConfirmation ? periodDate.getMonth() + 1 : p.period_month;
     const pYear = newConfirmation ? periodDate.getFullYear() : p.period_year;
@@ -137,7 +137,7 @@ router.put('/:id', authenticate, async (req, res) => {
        WHERE id=$15 RETURNING *`,
       [
         title ?? p.title, newClientName, project_type ?? p.project_type,
-        event_date !== undefined ? event_date : p.event_date, newConfirmation,
+        event_date !== undefined ? (event_date || null) : p.event_date, newConfirmation,
         revenue ?? p.revenue, cost ?? p.cost, newStatus,
         newAssignee, pMonth, pYear,
         project_google_link !== undefined ? project_google_link : p.project_google_link,
@@ -168,8 +168,9 @@ router.put('/:id', authenticate, async (req, res) => {
     await db.query('COMMIT');
     res.json(rows[0]);
   } catch (err) {
+    console.error('Project update error:', err);
     await db.query('ROLLBACK');
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message || 'Server error' });
   } finally {
     db.release();
   }
