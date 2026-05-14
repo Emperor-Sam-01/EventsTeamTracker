@@ -473,7 +473,95 @@ function ConvertModal({ client, onSave, onClose }) {
 }
 
 // ─── Move Client Modal ────────────────────────────────────────────────────────
-const LIST_TYPE_OPTIONS = [
+// ─── Delete client confirmation (BDM only) ───────────────────────────────────
+function DeleteClientModal({ client, onClose, onDeleted }) {
+  const [typed, setTyped] = useState('');
+  const [step, setStep] = useState(1); // 1 = first confirm, 2 = CAPTCHA
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState('');
+  const expected = client.company_name;
+  const confirmed = typed === expected;
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setError('');
+    try {
+      await api.delete(`/clients/${client.id}`);
+      onDeleted();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to delete. Please try again.');
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+        <div className="p-5 border-b flex items-start gap-3">
+          <div className="text-2xl">⚠️</div>
+          <div>
+            <h2 className="font-semibold text-gray-900">Delete Client Record</h2>
+            <p className="text-xs text-red-600 mt-0.5 font-medium">This action cannot be undone.</p>
+          </div>
+        </div>
+
+        {step === 1 ? (
+          <div className="p-5 space-y-4">
+            <p className="text-sm text-gray-700">
+              You are about to permanently delete <strong>{client.company_name}</strong>
+              {client.project_name ? ` (${client.project_name})` : ''} from the client pipeline.
+            </p>
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 space-y-1">
+              <div className="font-semibold">This will:</div>
+              <div>• Remove the client record from all pipeline views</div>
+              <div>• This does <em>not</em> delete any linked projects</div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setStep(2)} className="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-xl px-4 py-2 transition-colors">
+                Yes, I want to delete this record
+              </button>
+              <button onClick={onClose} className="btn-secondary">Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div className="p-5 space-y-4">
+            <p className="text-sm text-gray-700">
+              To confirm deletion, type the company name exactly as shown below:
+            </p>
+            <div className="bg-gray-100 rounded-lg px-4 py-2 text-sm font-mono font-semibold text-gray-800 select-all">
+              {expected}
+            </div>
+            <input
+              type="text"
+              className="input"
+              placeholder="Type company name to confirm..."
+              value={typed}
+              onChange={e => setTyped(e.target.value)}
+              autoFocus
+            />
+            {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={handleDelete}
+                disabled={!confirmed || deleting}
+                className={`flex-1 text-sm font-medium rounded-xl px-4 py-2 transition-colors ${
+                  confirmed
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                {deleting ? 'Deleting…' : 'Permanently Delete'}
+              </button>
+              <button onClick={onClose} className="btn-secondary">Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
   { value: 'prospect',  label: 'Prospects' },
   { value: 'pipeline',  label: 'Pipeline' },
   { value: 'current',   label: 'Current Clients' },
@@ -713,6 +801,8 @@ export default function Clients() {
   const [userFilter, setUserFilter]           = useState('');
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [moveClient, setMoveClient] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteClient, setDeleteClient] = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -849,6 +939,14 @@ export default function Clients() {
                     ↕ Move to other status
                   </button>
                 )}
+                {isBDM && (
+                  <button
+                    onClick={()=>{ setDeleteClient(c); setShowDeleteModal(true); }}
+                    className="mt-1.5 w-full text-xs text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md py-1 font-medium transition-colors"
+                  >
+                    🗑 Delete record
+                  </button>
+                )}
               </div>
             );
           })}
@@ -924,6 +1022,13 @@ export default function Clients() {
       )}
       {showConvertLost && converting && (
         <ConvertToLostModal client={converting} onSave={()=>{setShowConvertLost(false);setConverting(null);load();}} onClose={()=>{setShowConvertLost(false);setConverting(null);}} />
+      )}
+      {showDeleteModal && deleteClient && (
+        <DeleteClientModal
+          client={deleteClient}
+          onClose={() => { setShowDeleteModal(false); setDeleteClient(null); }}
+          onDeleted={() => { setShowDeleteModal(false); setDeleteClient(null); load(); }}
+        />
       )}
       {showMoveModal && moveClient && (
         <MoveClientModal
