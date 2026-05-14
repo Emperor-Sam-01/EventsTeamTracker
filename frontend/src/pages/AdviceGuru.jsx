@@ -520,189 +520,318 @@ function DISCSection() {
 
 // ─── Individual Review ────────────────────────────────────────────────────────
 const REVIEW_QUESTIONS = [
-  'How are you feeling about your current role and workload this quarter?',
-  'What were your top 3 achievements or wins this quarter?',
-  'What challenges or obstacles did you face, and how did you handle them?',
-  'How are you tracking against your GP and sales targets? What could be improved?',
-  'What support, resources, or changes would help you perform better?',
-  'How would you describe your working relationships with clients and teammates?',
-  'What are your top goals and focus areas for the coming quarter?',
-  'Is there anything about your career growth or personal development you\'d like to discuss?',
+  'Have you achieved the goals set during your last catch-up? If not, what got in the way?',
+  'Give yourself an overall performance rating from 1 to 10. (1 = very dissatisfied with your performance, 10 = absolutely crushing it)',
+  'Tell us more about your score. If you rated 1–7: what held you back? If 8–10: what are you proudest of this quarter?',
+  'Is there anything you\'re currently doing — or planning to start — that would push that rating higher next quarter?',
+  'Is there anything the management team can do to better support you and help improve your results?',
+  'Set at least 2 new goals for the coming quarter — include at least 1 personal goal and at least 1 work-related goal. These should be on top of any carry-over goals from last time.',
+  'How are you planning to make meaningful progress on these goals over the next 3 months?',
+  'Is there anything else you\'d like to raise, flag, or discuss?',
 ];
+
+function fmtReviewDate(d) {
+  if (!d) return null;
+  return new Date(d.split('T')[0] + 'T12:00:00').toLocaleDateString('en-SG', { day: 'numeric', month: 'long', year: 'numeric' });
+}
 
 function ReviewSection() {
   const { user } = useAuth();
   const isBDM = user.role === 'bdm';
+  const now = new Date();
+  const currentQ = Math.floor(now.getMonth() / 3) + 1;
+  const today = now.toISOString().split('T')[0];
+
   const [reviews, setReviews] = useState([]);
   const [teamUsers, setTeamUsers] = useState([]);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ user_id: '', quarter: '', year: new Date().getFullYear(), answers: {}, summary: '', action_items: '' });
+  const [editingReview, setEditingReview] = useState(null);
+  const [form, setForm] = useState({ user_id: '', quarter: currentQ, year: now.getFullYear(), answers: {}, summary: '', action_items: '', catch_up_date: today, location: '', spend: '' });
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState(null);
 
-  const now = new Date();
-  const currentQ = Math.floor(now.getMonth() / 3) + 1;
-
   const load = () => {
     api.get('/reviews').then(r => setReviews(r.data)).catch(console.error);
-    if (isBDM) api.get('/users').then(r => setTeamUsers(r.data.filter(u => u.role !== 'exec_pa'))).catch(console.error);
+    if (isBDM) api.get('/users').then(r => setTeamUsers(r.data.filter(u => !['exec_pa','bdm'].includes(u.role)))).catch(console.error);
   };
   useEffect(load, []);
+
+  const getPrevGoals = (userId, quarter, year) => {
+    if (!userId) return null;
+    const uid = parseInt(userId);
+    const prev = reviews
+      .filter(r => r.user_id === uid && (r.year < year || (r.year === year && r.quarter < quarter)))
+      .sort((a, b) => b.year !== a.year ? b.year - a.year : b.quarter - a.quarter)[0];
+    if (!prev) return null;
+    const goals = prev.answers?.[5] || prev.answers?.[6] || null;
+    return { review: prev, goals };
+  };
 
   const save = async () => {
     setSaving(true);
     try {
-      await api.post('/reviews', form);
+      const res = await api.post('/reviews', form);
       load();
+      const userName = teamUsers.find(u => u.id === form.user_id)?.name || '';
+      const userRole = teamUsers.find(u => u.id === form.user_id)?.role || '';
+      setSelected({ ...form, ...res.data, user_name: userName, user_role: userRole });
       setCreating(false);
-    } catch (err) { alert('Failed to save review'); }
+      setEditingReview(null);
+    } catch (err) { alert('Failed to save catch-up'); }
     finally { setSaving(false); }
   };
 
   const startNew = () => {
-    setForm({ user_id: '', quarter: currentQ, year: now.getFullYear(), answers: {}, summary: '', action_items: '' });
+    setForm({ user_id: '', quarter: currentQ, year: now.getFullYear(), answers: {}, summary: '', action_items: '', catch_up_date: today, location: '', spend: '' });
     setCreating(true);
+    setEditingReview(null);
     setSelected(null);
   };
 
   const editReview = (r) => {
-    setForm({ user_id: r.user_id, quarter: r.quarter, year: r.year, answers: r.answers || {}, summary: r.summary || '', action_items: r.action_items || '' });
+    setForm({
+      user_id: r.user_id, quarter: r.quarter, year: r.year,
+      answers: r.answers || {}, summary: r.summary || '', action_items: r.action_items || '',
+      catch_up_date: r.catch_up_date ? r.catch_up_date.split('T')[0] : today,
+      location: r.location || '', spend: r.spend || '',
+    });
     setCreating(true);
+    setEditingReview(r);
     setSelected(null);
   };
+
+  const prevGoalsData = creating ? getPrevGoals(form.user_id, form.quarter, form.year) : null;
 
   if (creating) return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-gray-900">Quarterly 1-1 Review</h2>
-        <button onClick={() => setCreating(false)} className="btn-secondary text-sm">← Back</button>
+        <h2 className="text-base font-semibold text-gray-900">{editingReview ? 'Edit Catch-Up' : 'New 1-1 Catch-Up'}</h2>
+        <button onClick={() => { setCreating(false); setEditingReview(null); }} className="btn-secondary text-sm">← Back</button>
       </div>
-      <div className="card space-y-4">
-        {isBDM && (
+
+      {/* Session details */}
+      <div className="card">
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Session Details</div>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="label">Date</label>
+            <input type="date" className="input" value={form.catch_up_date} onChange={e => setForm(f => ({ ...f, catch_up_date: e.target.value }))} required />
+          </div>
+          <div>
+            <label className="label">Location</label>
+            <input type="text" className="input" placeholder="e.g. Office, Zoom, Coffee" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label">Damage ($)</label>
+            <input type="number" className="input" placeholder="0.00" min="0" step="0.01" value={form.spend} onChange={e => setForm(f => ({ ...f, spend: e.target.value }))} />
+          </div>
+        </div>
+      </div>
+
+      {/* Team member + quarter (BDM only) */}
+      {isBDM && (
+        <div className="card">
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="label">Team Member</label>
-              <select className="input" value={form.user_id} onChange={e => setForm(f=>({...f,user_id:parseInt(e.target.value)}))}>
-                <option value="">Select...</option>
+              <select className="input" value={form.user_id} onChange={e => setForm(f => ({ ...f, user_id: parseInt(e.target.value) || '' }))} required>
+                <option value="">Select member...</option>
                 {teamUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role.toUpperCase()})</option>)}
               </select>
             </div>
             <div>
               <label className="label">Quarter</label>
-              <select className="input" value={form.quarter} onChange={e => setForm(f=>({...f,quarter:parseInt(e.target.value)}))}>
+              <select className="input" value={form.quarter} onChange={e => setForm(f => ({ ...f, quarter: parseInt(e.target.value) }))}>
                 {[1,2,3,4].map(q => <option key={q} value={q}>Q{q}</option>)}
               </select>
             </div>
             <div>
               <label className="label">Year</label>
-              <select className="input" value={form.year} onChange={e => setForm(f=>({...f,year:parseInt(e.target.value)}))}>
+              <select className="input" value={form.year} onChange={e => setForm(f => ({ ...f, year: parseInt(e.target.value) }))}>
                 {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
           </div>
-        )}
-        <div className="space-y-4">
-          {REVIEW_QUESTIONS.map((q, i) => (
-            <div key={i}>
-              <label className="label">Q{i+1}. {q}</label>
-              <textarea className="input" rows={3} placeholder="Enter response..."
-                value={form.answers[i] || ''}
-                onChange={e => setForm(f => ({ ...f, answers: { ...f.answers, [i]: e.target.value } }))}
-              />
-            </div>
-          ))}
         </div>
-        {isBDM && (
-          <>
-            <div>
-              <label className="label">BDM Summary</label>
-              <textarea className="input" rows={3} placeholder="Overall summary and key observations from this 1-1 session..." value={form.summary} onChange={e => setForm(f=>({...f,summary:e.target.value}))} />
-            </div>
-            <div>
-              <label className="label">Action Items</label>
-              <textarea className="input" rows={3} placeholder="e.g.&#10;- Increase cold outreach to 30 emails/week by end of May&#10;- Review pipeline with Sam every Monday&#10;- Focus on upselling to existing current clients" value={form.action_items} onChange={e => setForm(f=>({...f,action_items:e.target.value}))} />
-            </div>
-          </>
-        )}
-        <div className="flex gap-2">
-          <button onClick={save} disabled={saving} className="btn-primary flex-1">{saving?'Saving...':'Save Review'}</button>
-          <button onClick={() => setCreating(false)} className="btn-secondary">Cancel</button>
+      )}
+
+      {/* Previous goals reminder */}
+      <div className={`card ${prevGoalsData?.goals ? 'bg-indigo-50 border border-indigo-200' : 'bg-gray-50 border border-dashed border-gray-200'}`}>
+        <div className="flex items-center gap-2 mb-2">
+          <span>📌</span>
+          <div className="text-xs font-semibold text-gray-700">
+            Goals from Previous Catch-Up
+            {prevGoalsData && <span className="text-gray-400 font-normal ml-1">— Q{prevGoalsData.review.quarter} {prevGoalsData.review.year}</span>}
+          </div>
         </div>
+        {prevGoalsData?.goals ? (
+          <p className="text-sm text-indigo-800 whitespace-pre-wrap">{prevGoalsData.goals}</p>
+        ) : (
+          <p className="text-xs text-gray-400 italic">No previous goals on record — this is the first session or the previous review didn't capture goals.</p>
+        )}
+      </div>
+
+      {/* 8 Questions */}
+      {REVIEW_QUESTIONS.map((q, i) => (
+        <div key={i} className="card">
+          <label className="label font-semibold text-gray-800 mb-2">Q{i+1}. {q}</label>
+          <textarea className="input" rows={4} placeholder="Enter response..."
+            value={form.answers[i] || ''}
+            onChange={e => setForm(f => ({ ...f, answers: { ...f.answers, [i]: e.target.value } }))}
+          />
+        </div>
+      ))}
+
+      {/* BDM notes & action items */}
+      {isBDM && (
+        <>
+          <div className="card bg-blue-50 border border-blue-200">
+            <label className="label text-blue-800 font-semibold mb-2">📋 BDM Notes & Session Summary</label>
+            <textarea className="input" rows={3} placeholder="Overall observations, themes from the session, notes for the record..." value={form.summary} onChange={e => setForm(f => ({ ...f, summary: e.target.value }))} />
+          </div>
+          <div className="card bg-amber-50 border border-amber-200">
+            <label className="label text-amber-800 font-semibold mb-2">✅ Action Items</label>
+            <textarea className="input" rows={4}
+              placeholder={'e.g.\n- Increase weekly outreach to 20 cold calls\n- Block Fridays for proposal writing\n- Revisit Q6 goals in 4 weeks'}
+              value={form.action_items} onChange={e => setForm(f => ({ ...f, action_items: e.target.value }))} />
+          </div>
+        </>
+      )}
+
+      <div className="flex gap-2 pb-4">
+        <button onClick={save} disabled={saving} className="btn-primary flex-1">{saving ? 'Saving...' : 'Save Catch-Up'}</button>
+        <button onClick={() => { setCreating(false); setEditingReview(null); }} className="btn-secondary">Cancel</button>
       </div>
     </div>
   );
 
-  if (selected) return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-semibold text-gray-900">{isBDM ? selected.user_name + ' — ' : ''}Q{selected.quarter} {selected.year} Review</h2>
+  if (selected) {
+    const prevData = getPrevGoals(selected.user_id, selected.quarter, selected.year);
+    const ratingNum = parseInt(selected.answers?.[1]);
+    const ratingColor = ratingNum >= 8 ? 'text-green-600' : ratingNum >= 5 ? 'text-amber-500' : 'text-red-500';
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-gray-900">
+            {isBDM && selected.user_name ? `${selected.user_name} — ` : ''}Q{selected.quarter} {selected.year} Catch-Up
+          </h2>
+          <div className="flex gap-2">
+            {isBDM && <button onClick={() => editReview(selected)} className="btn-secondary text-sm">Edit</button>}
+            <button onClick={() => setSelected(null)} className="btn-secondary text-sm">← Back</button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          {isBDM && <button onClick={() => editReview(selected)} className="btn-secondary text-sm">Edit</button>}
-          <button onClick={() => setSelected(null)} className="btn-secondary text-sm">← Back</button>
+
+        {/* Session header */}
+        <div className="card">
+          <div className="grid grid-cols-3 gap-4 text-center divide-x divide-gray-100">
+            <div>
+              <div className="text-xs text-gray-400 mb-0.5">Date</div>
+              <div className="text-sm font-medium text-gray-900">{fmtReviewDate(selected.catch_up_date) || '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-400 mb-0.5">Location</div>
+              <div className="text-sm font-medium text-gray-900">{selected.location || '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-400 mb-0.5">Damage</div>
+              <div className="text-sm font-medium text-gray-900">{selected.spend ? formatCurrency(selected.spend) : '—'}</div>
+            </div>
+          </div>
         </div>
-      </div>
-      <div className="space-y-3">
-        {REVIEW_QUESTIONS.map((q, i) => selected.answers?.[i] && (
+
+        {/* Previous goals */}
+        {prevData?.goals && (
+          <div className="card bg-indigo-50 border border-indigo-200">
+            <div className="text-xs font-semibold text-indigo-700 mb-2">📌 Goals from Previous Catch-Up (Q{prevData.review.quarter} {prevData.review.year})</div>
+            <p className="text-sm text-indigo-800 whitespace-pre-wrap">{prevData.goals}</p>
+          </div>
+        )}
+
+        {/* Rating highlight */}
+        {selected.answers?.[1] && (
+          <div className="card text-center py-4">
+            <div className="text-xs text-gray-400 mb-1 uppercase tracking-wider">Self-Rating This Quarter</div>
+            <div className={`text-5xl font-black ${ratingColor}`}>
+              {selected.answers[1]}<span className="text-xl text-gray-300 font-normal">/10</span>
+            </div>
+          </div>
+        )}
+
+        {/* Q&As */}
+        {REVIEW_QUESTIONS.map((q, i) => selected.answers?.[i] ? (
           <div key={i} className="card">
-            <div className="text-xs font-semibold text-brand-700 mb-1">Q{i+1}. {q}</div>
+            <div className="text-xs font-semibold text-brand-700 mb-1.5">Q{i+1}. {q}</div>
             <p className="text-sm text-gray-800 whitespace-pre-wrap">{selected.answers[i]}</p>
           </div>
-        ))}
+        ) : null)}
+
+        {/* BDM Summary */}
         {selected.summary && (
           <div className="card bg-blue-50 border border-blue-200">
-            <div className="text-xs font-semibold text-blue-700 mb-1">📋 BDM Summary</div>
+            <div className="text-xs font-semibold text-blue-700 mb-1.5">📋 BDM Notes & Summary</div>
             <p className="text-sm text-gray-800 whitespace-pre-wrap">{selected.summary}</p>
           </div>
         )}
+
+        {/* Action Items */}
         {selected.action_items && (
           <div className="card bg-amber-50 border border-amber-200">
-            <div className="text-xs font-semibold text-amber-700 mb-1">✅ Action Items</div>
+            <div className="text-xs font-semibold text-amber-700 mb-1.5">✅ Action Items</div>
             <p className="text-sm text-gray-800 whitespace-pre-wrap">{selected.action_items}</p>
           </div>
         )}
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-gray-900">Individual Reviews</h2>
-        {isBDM && <button onClick={startNew} className="btn-primary text-sm">+ New Review</button>}
+        <h2 className="text-base font-semibold text-gray-900">1-1 Catch-Up Reviews</h2>
+        {isBDM && <button onClick={startNew} className="btn-primary text-sm">+ New Catch-Up</button>}
       </div>
       {reviews.length === 0 ? (
         <div className="card text-center py-10 text-gray-500">
           <div className="text-4xl mb-3">📋</div>
-          <p className="font-medium">{isBDM ? 'No reviews yet. Create your first quarterly 1-1 review.' : 'No reviews yet. Your BDM will share them here after your 1-1.'}</p>
+          <p className="font-medium">{isBDM ? 'No catch-ups recorded yet. Start your first 1-1 session.' : 'No reviews yet. Your BDM will share them here after your catch-up.'}</p>
         </div>
       ) : (
         <div className="space-y-2">
-          {isBDM && (
+          {isBDM && teamUsers.length > 0 && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
               {teamUsers.map(u => {
-                const userReviews = reviews.filter(r => r.user_id === u.id);
+                const count = reviews.filter(r => r.user_id === u.id).length;
                 return (
                   <div key={u.id} className="card text-center py-3">
                     <div className="text-sm font-medium text-gray-900">{u.name.split(' ')[0]}</div>
-                    <div className="text-2xl font-bold text-brand-600 mt-1">{userReviews.length}</div>
-                    <div className="text-xs text-gray-400">reviews</div>
+                    <div className="text-2xl font-bold text-brand-600 mt-1">{count}</div>
+                    <div className="text-xs text-gray-400">catch-up{count !== 1 ? 's' : ''}</div>
                   </div>
                 );
               })}
             </div>
           )}
-          {reviews.map(r => (
-            <div key={r.id} className="card flex items-center justify-between cursor-pointer hover:border-brand-300 border border-transparent transition-colors" onClick={() => setSelected(r)}>
-              <div>
-                {isBDM && <div className="text-xs text-brand-600 font-medium">{r.user_name} ({r.user_role?.toUpperCase()})</div>}
-                <div className="font-medium text-gray-900">Q{r.quarter} {r.year} Review</div>
-                {r.summary && <div className="text-xs text-gray-400 mt-0.5 line-clamp-1">{r.summary}</div>}
+          {reviews.map(r => {
+            const ratingNum = parseInt(r.answers?.[1]);
+            const ratingColor = ratingNum >= 8 ? 'text-green-600' : ratingNum >= 5 ? 'text-amber-500' : 'text-red-500';
+            return (
+              <div key={r.id} className="card flex items-center justify-between cursor-pointer hover:border-brand-300 border border-transparent transition-colors" onClick={() => setSelected(r)}>
+                <div>
+                  {isBDM && <div className="text-xs text-brand-600 font-medium">{r.user_name} ({r.user_role?.toUpperCase()})</div>}
+                  <div className="font-medium text-gray-900">Q{r.quarter} {r.year} Catch-Up</div>
+                  {r.catch_up_date && (
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      {fmtReviewDate(r.catch_up_date)}{r.location ? ` · ${r.location}` : ''}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 ml-4 shrink-0">
+                  {r.answers?.[1] && <div className={`text-base font-bold ${ratingColor}`}>{r.answers[1]}/10</div>}
+                  <span className="text-gray-300">›</span>
+                </div>
               </div>
-              <span className="text-gray-300 ml-4">›</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -844,7 +973,7 @@ function TeamReviewSection() {
 const TABS = [
   { key: 'chat',   label: '💬 Advice Chat' },
   { key: 'disc',   label: '🎯 DISC Profiles' },
-  { key: 'review', label: '📋 My Reviews' },
+  { key: 'review', label: '📋 1-1 Catch-Ups' },
   { key: 'team',   label: '📊 Team Reviews' },
 ];
 

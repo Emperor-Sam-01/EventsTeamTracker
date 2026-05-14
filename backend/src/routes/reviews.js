@@ -20,16 +20,18 @@ router.get('/', authenticate, async (req, res) => {
 
 // Create or update a review (BDM only)
 router.post('/', authenticate, requireBDM, async (req, res) => {
-  const { user_id, quarter, year, answers, summary, action_items } = req.body;
+  const { user_id, quarter, year, answers, summary, action_items, catch_up_date, location, spend } = req.body;
   if (!user_id || !quarter || !year) return res.status(400).json({ error: 'user_id, quarter, year required' });
   try {
     const { rows } = await pool.query(
-      `INSERT INTO individual_reviews (user_id, reviewer_id, quarter, year, answers, summary, action_items)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `INSERT INTO individual_reviews (user_id, reviewer_id, quarter, year, answers, summary, action_items, catch_up_date, location, spend)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        ON CONFLICT (user_id, quarter, year) DO UPDATE SET
-         answers=$5, summary=$6, action_items=$7, reviewer_id=$2, updated_at=NOW()
+         answers=$5, summary=$6, action_items=$7, reviewer_id=$2,
+         catch_up_date=$8, location=$9, spend=$10, updated_at=NOW()
        RETURNING *`,
-      [user_id, req.user.id, quarter, year, JSON.stringify(answers||{}), summary||null, action_items||null]
+      [user_id, req.user.id, quarter, year, JSON.stringify(answers||{}), summary||null, action_items||null,
+       catch_up_date||null, location||null, spend||null]
     );
     res.json(rows[0]);
   } catch (err) { console.error(err); res.status(500).json({ error: 'Server error' }); }

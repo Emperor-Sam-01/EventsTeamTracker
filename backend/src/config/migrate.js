@@ -197,6 +197,11 @@ CREATE TABLE IF NOT EXISTS team_reviews (
 
 -- Link non-BDM users to their reporting BDM
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bdm_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+
+-- 1-1 Catch-Up Reviews: session metadata
+ALTER TABLE individual_reviews ADD COLUMN IF NOT EXISTS catch_up_date DATE;
+ALTER TABLE individual_reviews ADD COLUMN IF NOT EXISTS location VARCHAR(200);
+ALTER TABLE individual_reviews ADD COLUMN IF NOT EXISTS spend NUMERIC(10,2);
 `;
 
 async function migrate() {
