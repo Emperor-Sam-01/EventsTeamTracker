@@ -294,12 +294,21 @@ router.get('/benchmarks', authenticate, async (req, res) => {
 
   try {
     const { rows } = await pool.query(
-      `SELECT u.id, u.role,
-        COALESCE(SUM(p.gp) FILTER (WHERE p.period_month = $1 AND p.period_year = $2), 0) AS monthly_gp
-       FROM users u
-       LEFT JOIN projects p ON p.assigned_to = u.id AND p.status IN ('confirmed','completed')
-       WHERE u.is_active = TRUE AND u.role NOT IN ('bdm', 'exec_pa')
-       GROUP BY u.id, u.role`,
+      `WITH crew_gp AS (
+        SELECT assigned_to AS user_id, gp, period_month, period_year FROM projects
+        WHERE status IN ('confirmed','completed')
+          AND NOT EXISTS (SELECT 1 FROM project_crew WHERE project_id = id)
+        UNION ALL
+        SELECT pc.user_id, pc.gp_allocated AS gp, p.period_month, p.period_year
+        FROM project_crew pc JOIN projects p ON p.id = pc.project_id
+        WHERE p.status IN ('confirmed','completed')
+      )
+      SELECT u.id,
+        COALESCE(SUM(cg.gp) FILTER (WHERE cg.period_month = $1 AND cg.period_year = $2), 0) AS monthly_gp
+      FROM users u
+      LEFT JOIN crew_gp cg ON cg.user_id = u.id
+      WHERE u.is_active = TRUE AND u.role NOT IN ('bdm', 'exec_pa')
+      GROUP BY u.id`,
       [m, y]
     );
 
@@ -341,18 +350,24 @@ router.get('/benchmarks-trend', authenticate, async (req, res) => {
         FROM project_crew pc JOIN projects p ON p.id = pc.project_id
         WHERE p.status IN ('confirmed','completed')
       ),
-      user_monthly AS (
-        SELECT cg.user_id, cg.period_year, cg.period_month, SUM(cg.gp) AS monthly_gp
-        FROM crew_gp cg
-        JOIN users u ON u.id = cg.user_id
+      active_months AS (
+        SELECT DISTINCT period_year, period_month FROM crew_gp
+      ),
+      all_user_months AS (
+        SELECT u.id AS user_id, am.period_year, am.period_month,
+          COALESCE(SUM(cg.gp), 0) AS monthly_gp
+        FROM users u
+        CROSS JOIN active_months am
+        LEFT JOIN crew_gp cg ON cg.user_id = u.id
+          AND cg.period_year = am.period_year AND cg.period_month = am.period_month
         WHERE u.is_active = TRUE AND u.role NOT IN ('bdm', 'exec_pa')
-        GROUP BY cg.user_id, cg.period_year, cg.period_month
+        GROUP BY u.id, am.period_year, am.period_month
       )
       SELECT period_year, period_month,
         AVG(monthly_gp) AS avg_gp,
         MAX(monthly_gp) AS best_gp,
         MIN(monthly_gp) AS worst_gp
-      FROM user_monthly
+      FROM all_user_months
       GROUP BY period_year, period_month
       ORDER BY period_year, period_month`
     );

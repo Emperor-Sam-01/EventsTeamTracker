@@ -69,7 +69,17 @@ function getSalesTargets(role, tier = 1) {
       max_potential_clients: 8,
     };
   }
-  // BDM has no enforced cold outreach baseline in the system
+  if (role === 'bda' || role === 'pa') {
+    return {
+      cold_emails: 150,
+      cold_calls: 100,
+      new_clients_met: [1, 2, 3][tierIndex],
+      proposals_sent: [2, 3, 5][tierIndex],
+      max_existing_clients: 5,
+      max_potential_clients: 10,
+    };
+  }
+  // BDM / exec_pa have no enforced cold outreach baseline
   return {
     cold_emails: 0,
     cold_calls: 0,

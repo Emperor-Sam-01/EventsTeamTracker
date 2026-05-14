@@ -678,6 +678,89 @@ export default function Clients() {
     prospect: ownClients.filter(c => c.list_type === 'prospect').length,
   };
 
+  const renderColumn = (type) => {
+    const cols = grouped[type] || [];
+    return (
+      <div key={type} className={`border rounded-xl p-4 ${LIST_COLORS[type]}`}>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-gray-800">{LIST_LABELS[type]}</h2>
+          <span className={`badge ${LIST_BADGE[type]}`}>{cols.length}</span>
+        </div>
+        <div className="space-y-2">
+          {cols.length===0 && <div className="text-xs text-gray-400 text-center py-4">No entries</div>}
+          {cols.map(c => {
+            const canInteract = isBDM || c.user_id === user.id;
+            return (
+              <div key={c.id} className="bg-white rounded-lg p-3 shadow-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 truncate">{c.company_name}</div>
+                    {c.project_name && <div className="text-xs text-brand-600 truncate">{c.project_name}</div>}
+                    {c.project_type && <div className="text-xs text-gray-400">{c.project_type}</div>}
+                  </div>
+                  {canInteract && ['prospect','pipeline'].includes(type) && (
+                    <button onClick={()=>{setEditing(c);setShowModal(true);}} className="text-xs text-brand-600 hover:underline shrink-0">Edit</button>
+                  )}
+                </div>
+                {c.contact_name && <div className="text-xs text-gray-600 mt-1">👤 {c.contact_name}{c.contact_details && ` · ${c.contact_details}`}</div>}
+                {c.event_date && <div className="text-xs text-gray-500 mt-0.5">📅 {fmtDate(c.event_date)}</div>}
+                {(c.estimated_revenue||c.estimated_gp) && (
+                  <div className="text-xs mt-0.5">
+                    {c.estimated_revenue && <span className="text-gray-500">Rev: {formatCurrency(c.estimated_revenue)} </span>}
+                    {c.estimated_gp && <span className="text-gray-600">Cost: {formatCurrency(c.estimated_gp)}</span>}
+                  </div>
+                )}
+                {c.google_link && (
+                  <div className="text-xs mt-0.5">
+                    {/^https?:\/\//i.test(c.google_link)
+                      ? <a href={c.google_link} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">📎 Drive Link ↗</a>
+                      : <span className="text-gray-500">📎 {c.google_link}</span>
+                    }
+                  </div>
+                )}
+                {c.loss_reason && <div className="text-xs text-red-600 mt-1 bg-red-50 rounded px-2 py-1">Reason: {c.loss_reason}</div>}
+                {c.notes && <div className="text-xs text-gray-400 mt-1 italic line-clamp-2">{c.notes}</div>}
+                {c.member_name && (
+                  <div className="text-xs text-brand-600 mt-1 font-medium">{c.member_name}</div>
+                )}
+                {canInteract && type === 'prospect' && (
+                  <button
+                    onClick={()=>{setConverting(c);setShowConvertPipeline(true);}}
+                    className="mt-2 w-full text-xs bg-purple-600 hover:bg-purple-700 text-white rounded-md py-1.5 font-medium transition-colors"
+                  >
+                    → Move to Pipeline
+                  </button>
+                )}
+                {canInteract && type === 'pipeline' && (
+                  <div className="mt-2 space-y-1.5">
+                    <button
+                      onClick={()=>{setConverting(c);setShowConvert(true);}}
+                      className="w-full text-xs bg-brand-600 hover:bg-brand-700 text-white rounded-md py-1.5 font-medium transition-colors"
+                    >
+                      ✓ Convert to Current Client
+                    </button>
+                    <button
+                      onClick={()=>{setConverting(c);setShowConvertLost(true);}}
+                      className="w-full text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded-md py-1.5 font-medium transition-colors"
+                    >
+                      ✕ Mark as Lost
+                    </button>
+                  </div>
+                )}
+                {type === 'current' && (
+                  <div className="mt-2 text-xs text-gray-400 text-center italic">Manage in Projects tab</div>
+                )}
+                {type === 'completed' && (
+                  <div className="mt-2 text-xs text-green-600 text-center font-medium">✓ Project completed</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -718,95 +801,15 @@ export default function Clients() {
           {loading ? (
             <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" /></div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4">
-              {LIST_TYPES.map(type => {
-                const cols = grouped[type] || [];
-                return (
-                  <div key={type} className={`border rounded-xl p-4 ${LIST_COLORS[type]}`}>
-                    <div className="flex items-center justify-between mb-3">
-                      <h2 className="text-sm font-semibold text-gray-800">{LIST_LABELS[type]}</h2>
-                      <span className={`badge ${LIST_BADGE[type]}`}>{cols.length}</span>
-                    </div>
-                    <div className="space-y-2">
-                      {cols.length===0 && <div className="text-xs text-gray-400 text-center py-4">No entries</div>}
-                      {cols.map(c => {
-                        const canInteract = isBDM || c.user_id === user.id;
-                        return (
-                          <div key={c.id} className="bg-white rounded-lg p-3 shadow-sm">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-900 truncate">{c.company_name}</div>
-                                {c.project_name && <div className="text-xs text-brand-600 truncate">{c.project_name}</div>}
-                                {c.project_type && <div className="text-xs text-gray-400">{c.project_type}</div>}
-                              </div>
-                              {canInteract && ['prospect','pipeline'].includes(type) && (
-                                <button onClick={()=>{setEditing(c);setShowModal(true);}} className="text-xs text-brand-600 hover:underline shrink-0">Edit</button>
-                              )}
-                            </div>
-                            {c.contact_name && <div className="text-xs text-gray-600 mt-1">👤 {c.contact_name}{c.contact_details && ` · ${c.contact_details}`}</div>}
-                            {c.event_date && <div className="text-xs text-gray-500 mt-0.5">📅 {fmtDate(c.event_date)}</div>}
-                            {(c.estimated_revenue||c.estimated_gp) && (
-                              <div className="text-xs mt-0.5">
-                                {c.estimated_revenue && <span className="text-gray-500">Rev: {formatCurrency(c.estimated_revenue)} </span>}
-                                {c.estimated_gp && <span className="text-gray-600">Cost: {formatCurrency(c.estimated_gp)}</span>}
-                              </div>
-                            )}
-                            {c.google_link && (
-                              <div className="text-xs mt-0.5">
-                                {/^https?:\/\//i.test(c.google_link)
-                                  ? <a href={c.google_link} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">📎 Drive Link ↗</a>
-                                  : <span className="text-gray-500">📎 {c.google_link}</span>
-                                }
-                              </div>
-                            )}
-                            {c.loss_reason && <div className="text-xs text-red-600 mt-1 bg-red-50 rounded px-2 py-1">Reason: {c.loss_reason}</div>}
-                            {c.notes && <div className="text-xs text-gray-400 mt-1 italic line-clamp-2">{c.notes}</div>}
-                            {c.member_name && (
-                              <div className="text-xs text-brand-600 mt-1 font-medium">{c.member_name}</div>
-                            )}
-
-                            {/* Prospect actions — own clients only */}
-                            {canInteract && type === 'prospect' && (
-                              <button
-                                onClick={()=>{setConverting(c);setShowConvertPipeline(true);}}
-                                className="mt-2 w-full text-xs bg-purple-600 hover:bg-purple-700 text-white rounded-md py-1.5 font-medium transition-colors"
-                              >
-                                → Move to Pipeline
-                              </button>
-                            )}
-
-                            {/* Pipeline actions — own clients only */}
-                            {canInteract && type === 'pipeline' && (
-                              <div className="mt-2 space-y-1.5">
-                                <button
-                                  onClick={()=>{setConverting(c);setShowConvert(true);}}
-                                  className="w-full text-xs bg-brand-600 hover:bg-brand-700 text-white rounded-md py-1.5 font-medium transition-colors"
-                                >
-                                  ✓ Convert to Current Client
-                                </button>
-                                <button
-                                  onClick={()=>{setConverting(c);setShowConvertLost(true);}}
-                                  className="w-full text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded-md py-1.5 font-medium transition-colors"
-                                >
-                                  ✕ Mark as Lost
-                                </button>
-                              </div>
-                            )}
-
-                            {type === 'current' && (
-                              <div className="mt-2 text-xs text-gray-400 text-center italic">Manage in Projects tab</div>
-                            )}
-
-                            {type === 'completed' && (
-                              <div className="mt-2 text-xs text-green-600 text-center font-medium">✓ Project completed</div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="space-y-4">
+              {/* Row 1: Current, Pipeline, Prospect */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {['current','pipeline','prospect'].map(type => renderColumn(type))}
+              </div>
+              {/* Row 2: Completed, Lost */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {['completed','lost'].map(type => renderColumn(type))}
+              </div>
             </div>
           )}
         </>

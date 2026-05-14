@@ -95,10 +95,10 @@ function StatCard({ label, value, sub, color }) {
   );
 }
 
-// Format date string "2026-05-04" as "4 May" safely (noon avoids TZ shift)
+// Format date string from DB (may be full ISO or date-only) as "4 May"
 function fmtMonday(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr + 'T12:00:00');
+  const d = new Date(dateStr.split('T')[0] + 'T12:00:00');
   return `${d.getDate()} ${d.toLocaleString('en-SG', { month: 'short' })}`;
 }
 
@@ -312,7 +312,11 @@ export default function IndividualDashboard() {
           <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-            <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
+            <YAxis
+              tickFormatter={v => `$${(v / 1000).toFixed(0)}k`}
+              tick={{ fontSize: 11 }}
+              domain={[0, dataMax => Math.ceil(Math.max(dataMax, t3 || t2 || t1 || 1) * 1.1 / 1000) * 1000]}
+            />
             <Tooltip content={<GpTrendTooltip />} />
             <Legend />
             {t1 && <ReferenceLine y={t1} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'T1', fontSize: 10, fill: '#f59e0b', position: 'insideTopRight' }} />}
