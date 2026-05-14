@@ -562,6 +562,7 @@ function DeleteClientModal({ client, onClose, onDeleted }) {
 }
 
 
+const LIST_TYPE_OPTIONS = [
   { value: 'prospect',  label: 'Prospects' },
   { value: 'pipeline',  label: 'Pipeline' },
   { value: 'current',   label: 'Current Clients' },
