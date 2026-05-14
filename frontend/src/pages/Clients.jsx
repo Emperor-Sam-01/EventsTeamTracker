@@ -71,13 +71,13 @@ function getLastMonday() {
 
 function fmtDate(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr + 'T12:00:00');
+  const d = new Date(dateStr.split('T')[0] + 'T12:00:00');
   return d.toLocaleDateString('en-SG', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function fmtShort(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr + 'T12:00:00');
+  const d = new Date(dateStr.split('T')[0] + 'T12:00:00');
   return `${d.getDate()} ${d.toLocaleString('en-SG', { month: 'short' })}`;
 }
 

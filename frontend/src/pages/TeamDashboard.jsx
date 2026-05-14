@@ -7,7 +7,7 @@ const MEETING_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 
 
 function fmtWeekDate(d) {
   if (!d) return '—';
-  const dt = new Date(d + 'T12:00:00');
+  const dt = new Date(d.split('T')[0] + 'T12:00:00');
   return `${dt.getDate()} ${MEETING_MONTHS[dt.getMonth()]}`;
 }
 

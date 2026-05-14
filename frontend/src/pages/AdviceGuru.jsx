@@ -25,6 +25,85 @@ const DISC_COMPAT = {
   CC: { score: 70, label: 'Analytical Alliance', desc: 'Two detail-oriented thinkers producing accurate, well-researched outputs — decisions can stall.', good: ['Highest accuracy and quality', 'Both thorough and systematic', 'Strong at complex analysis'], watch: ['Analysis paralysis is a real risk', 'Slow to decide', 'Uncomfortable with risk'], tip: 'Define what "good enough" looks like before starting — not everything needs to be perfect.' },
 };
 
+const DISC_INSIGHTS = {
+  D: {
+    tagline: 'The Driver',
+    strengths: ['Decisive and action-oriented', 'Natural leader under pressure', 'Results-focused and persistent', 'Thrives in competitive environments'],
+    growth: ['Can come across as blunt or dismissive', 'May overlook team feelings', 'Tends to move too fast without enough detail', 'Struggles with routine or slow-paced work'],
+    motivates: ['Challenges and competition', 'Control and autonomy', 'Achieving visible results', 'Recognition for achievements'],
+    stresses: ['Loss of control or slow pace', 'Too many rules or restrictions', 'Having to rely on others', 'Indecisiveness around them'],
+    communication: 'Be direct, brief, and results-focused. Skip small talk. Lead with the bottom line and give options — not instructions.',
+    clientTip: 'Lead with ROI and outcomes. Be confident and decisive. Avoid wishy-washy proposals — D clients respect clear, bold recommendations.',
+  },
+  I: {
+    tagline: 'The Influencer',
+    strengths: ['Enthusiastic and inspiring', 'Natural relationship-builder', 'Creative and idea-rich', 'Excellent at rallying people'],
+    growth: ['May lack follow-through', 'Can be disorganised under pressure', 'Overpromises at times', 'Struggles with detail-heavy work'],
+    motivates: ['Social recognition and praise', 'Creative freedom and variety', 'Collaborative environments', 'Fun and excitement'],
+    stresses: ['Being ignored or isolated', 'Repetitive, detail-heavy tasks', 'Rigid structure and rules', 'Conflict or negative feedback'],
+    communication: 'Be warm, enthusiastic, and collaborative. Allow them to share ideas. Acknowledge contributions publicly. Avoid cold or overly formal interactions.',
+    clientTip: 'Build the relationship first — they buy from people they like. Use storytelling over data. Follow up in writing to keep them accountable.',
+  },
+  S: {
+    tagline: 'The Stabiliser',
+    strengths: ['Dependable and consistent', 'Great listener and team player', 'Calm under pressure', 'Excellent at follow-through'],
+    growth: ['May avoid conflict even when needed', 'Resistant to sudden change', 'Can be slow to make decisions', 'May not voice concerns proactively'],
+    motivates: ['Stability and security', 'Sincere appreciation and belonging', 'Clear expectations and processes', 'Helping others succeed'],
+    stresses: ['Sudden or unexplained change', 'Conflict or confrontation', 'Feeling unappreciated', 'Unclear or shifting priorities'],
+    communication: 'Be patient, warm, and consistent. Give advance notice before changes. Ask for their opinion — they often hold back. Avoid being pushy.',
+    clientTip: 'Build trust over time — they aren\'t impulse buyers. Be patient and reassuring. Provide detailed timelines and follow up reliably.',
+  },
+  C: {
+    tagline: 'The Analyst',
+    strengths: ['Precise and detail-oriented', 'Systematic and logical', 'High personal standards', 'Excellent at planning and analysis'],
+    growth: ['Can over-analyse and delay decisions', 'May appear cold or detached', 'Highly critical of self and others', 'Can struggle with ambiguity'],
+    motivates: ['Quality and accuracy', 'Understanding the "why"', 'Structured processes and clear standards', 'Recognition for expertise'],
+    stresses: ['Unclear expectations or standards', 'Being asked to cut corners', 'Criticism without specific feedback', 'High-pressure emotionally charged environments'],
+    communication: 'Be prepared with data and detail. Avoid emotional appeals — lead with logic. Give them time to process and respond. Don\'t rush decisions.',
+    clientTip: 'Provide thorough proposals with supporting data. Be precise on pricing and timelines. Expect detailed questions — answer them completely.',
+  },
+};
+
+function IndividualInsight({ type }) {
+  const info = DISC_INFO[type];
+  const insight = DISC_INSIGHTS[type];
+  if (!insight) return null;
+  return (
+    <div className="card mt-4 space-y-4">
+      <div className="flex items-center gap-3">
+        <div className={`px-3 py-1 rounded-full text-sm font-semibold ${info.bg}`}>{type} — {insight.tagline}</div>
+        <p className="text-xs text-gray-500">{info.desc}</p>
+      </div>
+      <div className="grid md:grid-cols-2 gap-3">
+        <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+          <div className="text-xs font-semibold text-green-700 mb-2">💪 Key Strengths</div>
+          <ul className="space-y-0.5">{insight.strengths.map((s,i)=><li key={i} className="text-xs text-green-800">• {s}</li>)}</ul>
+        </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+          <div className="text-xs font-semibold text-amber-700 mb-2">🌱 Growth Areas</div>
+          <ul className="space-y-0.5">{insight.growth.map((s,i)=><li key={i} className="text-xs text-amber-800">• {s}</li>)}</ul>
+        </div>
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+          <div className="text-xs font-semibold text-blue-700 mb-2">⚡ What Motivates You</div>
+          <ul className="space-y-0.5">{insight.motivates.map((s,i)=><li key={i} className="text-xs text-blue-800">• {s}</li>)}</ul>
+        </div>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+          <div className="text-xs font-semibold text-red-700 mb-2">😓 What Stresses You</div>
+          <ul className="space-y-0.5">{insight.stresses.map((s,i)=><li key={i} className="text-xs text-red-800">• {s}</li>)}</ul>
+        </div>
+      </div>
+      <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+        <div className="text-xs font-semibold text-gray-700 mb-1">🗣 How to Communicate With You</div>
+        <p className="text-xs text-gray-700">{insight.communication}</p>
+      </div>
+      <div className="bg-brand-50 border border-brand-200 rounded-xl p-3">
+        <div className="text-xs font-semibold text-brand-700 mb-1">🤝 Working With This Type — Client Tip</div>
+        <p className="text-xs text-brand-800">{insight.clientTip}</p>
+      </div>
+    </div>
+  );
+}
+
 function getCompat(a, b) {
   const key = [a, b].sort().join('');
   return DISC_COMPAT[key] || DISC_COMPAT[[b,a].join('')] || null;
@@ -252,6 +331,9 @@ function DISCSection() {
           </div>
         )}
       </div>
+
+      {/* Individual insights — hidden when comparing */}
+      {profile && !compareId && <IndividualInsight type={profile.dominant_type} />}
 
       {/* Compare */}
       {profile && (
