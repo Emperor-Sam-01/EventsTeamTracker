@@ -852,8 +852,9 @@ function ReviewSection() {
 // ─── Team Review ──────────────────────────────────────────────────────────────
 function TeamReviewSection() {
   const { user } = useAuth();
-  const isBDM = user.role === 'bdm';
+  const isBDM = ['bdm', 'exec_pa'].includes(user.role);
   const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState({ quarter: '', year: new Date().getFullYear(), total_gp: '', total_projects: '', total_prospects: '', total_pipeline: '', highlights: '', challenges: '', action_items: '' });
@@ -861,7 +862,13 @@ function TeamReviewSection() {
   const now = new Date();
   const currentQ = Math.floor(now.getMonth() / 3) + 1;
 
-  const load = () => api.get('/team-reviews').then(r => setReviews(r.data)).catch(console.error);
+  const load = () => {
+    setLoading(true);
+    api.get('/team-reviews')
+      .then(r => setReviews(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setReviews([]))
+      .finally(() => setLoading(false));
+  };
   useEffect(load, []);
 
   const loadStats = async (q, y) => {
@@ -949,6 +956,13 @@ function TeamReviewSection() {
       {selected.highlights && <div className="card bg-green-50 border border-green-200"><div className="text-xs font-semibold text-green-700 mb-2">🏆 Highlights & Wins</div><p className="text-sm text-gray-800 whitespace-pre-wrap">{selected.highlights}</p></div>}
       {selected.challenges && <div className="card bg-amber-50 border border-amber-200"><div className="text-xs font-semibold text-amber-700 mb-2">⚠ Challenges & Learnings</div><p className="text-sm text-gray-800 whitespace-pre-wrap">{selected.challenges}</p></div>}
       {selected.action_items && <div className="card bg-blue-50 border border-blue-200"><div className="text-xs font-semibold text-blue-700 mb-2">✅ Action Items — Next Quarter</div><p className="text-sm text-gray-800 whitespace-pre-wrap">{selected.action_items}</p></div>}
+    </div>
+  );
+
+  if (loading) return (
+    <div className="card text-center py-10 text-gray-400">
+      <div className="text-2xl mb-2">⏳</div>
+      <p className="text-sm">Loading team reviews…</p>
     </div>
   );
 
