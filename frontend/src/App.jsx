@@ -9,6 +9,7 @@ import Projects from './pages/Projects';
 import Clients from './pages/Clients';
 import TeamManagement from './pages/TeamManagement';
 import AdviceGuru from './pages/AdviceGuru';
+import BillingTally from './pages/BillingTally';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -34,6 +35,7 @@ export default function App() {
             <Route path="clients" element={<Clients />} />
             <Route path="team-management" element={<BDMRoute><TeamManagement /></BDMRoute>} />
             <Route path="advice" element={<AdviceGuru />} />
+            <Route path="billing" element={<BillingTally />} />
           </Route>
         </Routes>
       </BrowserRouter>

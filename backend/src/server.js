@@ -14,6 +14,7 @@ app.use('/api/clients', require('./routes/clients'));
 app.use('/api/meetings', require('./routes/meetings'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 
+app.use('/api/billing', require('./routes/billing'));
 app.use('/api/disc', require('./routes/disc'));
 app.use('/api/reviews', require('./routes/reviews'));
 app.use('/api/team-reviews', require('./routes/teamreviews'));

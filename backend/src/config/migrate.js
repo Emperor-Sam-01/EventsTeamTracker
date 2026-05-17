@@ -212,6 +212,42 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS project_entity VARCHAR(100);
 
 -- Resignation tracking for staff
 ALTER TABLE users ADD COLUMN IF NOT EXISTS resignation_date DATE;
+
+-- Billing records imported from monthly billing sheets
+CREATE TABLE IF NOT EXISTS billing_records (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  period_month INTEGER NOT NULL CHECK (period_month BETWEEN 1 AND 12),
+  period_year INTEGER NOT NULL,
+  row_number INTEGER,
+  account_type VARCHAR(50),
+  client_name VARCHAR(300),
+  billing_company VARCHAR(200),
+  invoice_nos TEXT,
+  quotation_no VARCHAR(100),
+  invoice_amt_ex_gst NUMERIC(12,2),
+  gst_amt NUMERIC(12,2),
+  invoice_amt_inc_gst NUMERIC(12,2),
+  estimated_cost NUMERIC(12,2),
+  estimated_gp NUMERIC(12,2),
+  gp_margin NUMERIC(8,4),
+  personal_gp_pct NUMERIC(8,4),
+  personal_gp NUMERIC(12,2),
+  remarks_bd TEXT,
+  remarks_finance TEXT,
+  due_date DATE,
+  payment_status VARCHAR(50),
+  payment_date DATE,
+  impairment_days INTEGER,
+  impairment_amount NUMERIC(12,2),
+  section VARCHAR(50) DEFAULT 'normal',
+  confirmed_at TIMESTAMPTZ,
+  confirmed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  import_batch VARCHAR(100),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS billing_records_user_period ON billing_records (user_id, period_year, period_month);
 `;
 
 async function migrate() {
