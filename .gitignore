@@ -3,3 +3,6 @@ node_modules/
 dist/
 .DS_Store
 *.log
+# Google service account credentials — never commit these
+backend/google-credentials.json
+*-credentials.json
